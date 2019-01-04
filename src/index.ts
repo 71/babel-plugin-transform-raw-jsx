@@ -863,7 +863,7 @@ class State {
 }
 
 
-const dataKey = 'state'
+const dataKey = 'babel-plugin-transform-raw-jsx-state'
 
 /**
  * Returns the babel plugin.
@@ -876,24 +876,22 @@ export default () => <PluginObj<{ state: PluginState }>>{
       this.state = new PluginState((state as any).opts)
     },
 
-    CallExpression: {
-      enter(path) {
-        if (path.findParent(x => x.type == 'JSXElement'))
-          return
-        if (!this.state.isPragma(path.get('callee')) || path.parent.type == 'JSXElement')
-          return
-        
-        const parentWithState = path.find(x => x.scope.getData(dataKey) != null)
-        const parentState = parentWithState != null ? parentWithState.scope.getData(dataKey) as State : null
+    CallExpression(path) {
+      if (path.findParent(x => x.type == 'JSXElement'))
+        return
+      if (!this.state.isPragma(path.get('callee')) || path.parent.type == 'JSXElement')
+        return
+      
+      const parentWithState = path.find(x => x.scope.getData(dataKey) != null)
+      const parentState = parentWithState != null ? parentWithState.scope.getData(dataKey) as State : null
 
-        const state = new State(this.state, parentState)
+      const state = new State(this.state, parentState)
 
-        path.scope.setData(dataKey, state)
+      path.scope.setData(dataKey, state)
 
-        state.visit(path)
+      state.visit(path)
 
-        path.skip()
-      }
+      path.skip()
     }
   }
 }
