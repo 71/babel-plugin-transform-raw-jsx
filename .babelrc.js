@@ -9,9 +9,10 @@ const plugins = [
 
 if (process.env.IN_EXAMPLES) {
   plugins.push([require('./dist/index.js'), {
-    pragma    : 'h',
-    noRuntime : false,
-    importName: 'window.runtime'
+    pragma : 'h',
+
+    runtime: true,
+    runtimeImport: 'runtime'
   }])
 }
 

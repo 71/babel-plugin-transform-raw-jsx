@@ -29,9 +29,19 @@ module.exports = {
 
     ["plugin-transform-raw-jsx", {
       // Default options:
+
+      // Pragma used by React.
       pragma    : "React.createElement",
+
+      // How to prepend all imports; pass `null` if they already
+      // are in the global scope.
+      importName: "require('plugin-transform-raw-jsx/runtime')",
+
+      // Whether the runtime should be disabled.
       noRuntime : false,
-      importName: "require('plugin-transform-raw-jsx/runtime')"
+
+      // Whether extras features of the runtime should be enabled.
+      runtimeExtras: false
     }]
   ]
 }
@@ -50,12 +60,14 @@ const div: HTMLDivElement = <div>Hello world!</div>
 
 const Link = ({ to }) => (<a href={to} class='fancy-link' />)
 
-const ListOfLinks = ({ listTitle = 'Hello world', links }) => (<div>
-  <h1>{listTitle}</h1>
-  <ul>
-  { links.map(({ to, text }) => <Link to={to}>{text}</Link>) }
-  </ul>
-</div>)
+const ListOfLinks = ({ listTitle = 'Hello world', links }) => (
+  <div>
+    <h1>{listTitle}</h1>
+    <ul>
+    { links.map(({ to, text }) => <Link to={to}>{text}</Link>) }
+    </ul>
+  </div>
+)
 
 const links = [
   { to: 'https://babeljs.io', text: 'Babel' }
@@ -193,8 +205,8 @@ import {
 } from 'babel-plugin-transform-raw-jsx/runtime'
 
 interface TodoState {
-  text: string
-  done: boolean
+  text  : string
+  done  : boolean
   click?: EventListener
 }
 
@@ -204,18 +216,18 @@ const Todo = ({ text, done, click = () => null }: TodoState) => {
         click = isObservable(click) ? click : new Observable(click)
 
   // <li>
-  const li = createElement("li", null)
+  const li = createElement('li', null)
 
   //   <p>
-  const p = createElement("p", null)
+  const p = createElement('p', null)
 
   li.appendChild(p)
 
   //     {text}
   const inserted = []
-  const nextMarker = p.appendChild(document.createElement("div"))
+  const nextMarker = p.appendChild(document.createElement('div'))
 
-  nextMarker.style.display = "none"
+  nextMarker.style.display = 'none'
 
   const handler = () => {
     // We don't want to keep the previous elements, so we remove them
@@ -237,8 +249,8 @@ const Todo = ({ text, done, click = () => null }: TodoState) => {
   //   <input type='checkbox' checked={done}
   //          onclick={click}
   //          oninput={e => done = e.target.checked} />
-  const input = createElement("input", {
-    type   : "checkbox",
+  const input = createElement('input', {
+    type   : 'checkbox',
     checked: done,
     onclick: click,
 
@@ -278,3 +290,54 @@ setInterval(() => {
   pageTitle.value = 'Current time: ' + new Date().toLocaleTimeString()
 }, 1000)
 ```
+
+### Note about loops
+
+The generated code for this part of the `TodoApp` component:
+
+```jsx
+{ todos.map(({ text, done }) => (
+  <Todo text={text} done={done} />
+)) }
+```
+
+Would look like this:
+
+```js
+const insertedTodos = []
+const nextMarker    = ul.appendChild(document.createElement('div'))
+
+nextMarker.style.display = 'none'
+
+const handler = () => {
+  insertedTodos.splice(0, insertedTodos.length).forEach(ul.removeChild.bind(ul))
+
+  addElement(ul, todos.value.map(({ text, done }) => {
+    const text = isObservable(text) ? text : new Observable(text),
+          done = isObservable(text) ? done : new Observable(done)
+
+    return createElement(Todo, { text, done })
+  }), insertedTodos, nextMarker)
+}
+
+todos.subscribe(handler)
+
+handler()
+```
+
+As you may have noticed, this causes `handler` to be called every time `todos` changes,
+which means that the entire list will be removed, and then re-rendered.
+
+In order to avoid going through this, an optional `extras` module is provided,
+which automatically takes care of these problems.
+
+With the `runtimeExtras` feature enabled, `{ list.map(() => <Item />) }`
+will instead be replaced by another expression that watches changes to `list`,
+and only re-renders elements that need to be re-rendered.
+
+
+## Roadmap
+- [ ] Add ability to access an observable from within a component, instead of taking its value.
+- [ ] Provide a way to remove elements and their attached event handlers.
+- [ ] Add more tests.
+- [ ] Publish the plugin on NPM.

@@ -17,15 +17,16 @@ const options = {
       pragma: 'h'
     }],
     [plugin, {
-      pragma: 'h',
-      noRuntime: false,
-      importName: 'babel-plugin-transform-raw-jsx'
+      pragma : 'h',
+
+      runtime: true,
+      runtimeImport: 'runtime'
     }]
   ]
 }
 
 it('works', () => {
-  const source = readFileSync(__dirname + '/../examples/todo/index.tsx', 'utf8')
+  const source = readFileSync(__dirname + '/../examples/numbers/index.tsx', 'utf8')
   const { code } = babel.transformSync(source, options)
 
   console.log(code)

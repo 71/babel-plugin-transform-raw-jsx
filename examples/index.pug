@@ -4,9 +4,11 @@ head
   title Examples
 
 body
-  script(src='../src/runtime.ts')
+  script(src='../src/runtime/index.ts')
   script.
-    window.runtime = parcelRequire('../src/runtime.ts')
+    window.runtime = parcelRequire('../src/runtime/index.ts')
 
-  #todo
+  #content
+
   script(src='todo/index.tsx')
+  script(src='numbers/index.tsx')

@@ -37,6 +37,16 @@ export class Observable<T> implements Rx.Subscribable<T> {
       observer.next(value)
   }
 
+  /**
+   * Returns the string representation of the underlying value.
+   */
+  toString() {
+    return this.val ? this.val.toString() : undefined
+  }
+
+  /**
+   * Subcribes to this reactive value.
+   */
   subscribe(
     next    ?: Rx.PartialObserver<T> | ((value: T) => void),
     error   ?: (error: any) => void,
@@ -55,6 +65,11 @@ export class Observable<T> implements Rx.Subscribable<T> {
     }
   }
 }
+
+/**
+ * {T} if {T} is {Observable}, and {Observable<T>} otherwise.
+ */
+export type Obs<T> = T extends Observable<any> ? T : Observable<T>
 
 
 /**
@@ -139,7 +154,7 @@ export function addElement(parent: HTMLElement, elt: any, inserted: HTMLElement[
   if (inserted == null)
     return parent.appendChild(elt)
 
-  if (typeof elt == 'string')
+  if (!(elt instanceof Node))
     elt = new Text(elt)
 
   inserted.push(elt)
@@ -158,7 +173,7 @@ export function render(element: JSX.Element): HTMLElement {
  * Returns whether the given value is an `Observable` stream.
  */
 export function isObservable(value: any): value is Observable<any> {
-  return typeof value.subscribe == 'function'
+  return value != null && typeof value.subscribe == 'function'
 }
 
 /**
@@ -166,7 +181,7 @@ export function isObservable(value: any): value is Observable<any> {
  * 
  * If the given value is already an `Observable` stream, it is returned.
  */
-export function observable<T>(value: T): T extends Observable<T> ? T : Observable<T> {
+export function observable<T>(value: T): T extends Observable<any> ? T : Observable<T> {
   if (isObservable(value))
     return value as any
   else
