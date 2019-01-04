@@ -16,6 +16,9 @@ care of updating elements when needed.
 yarn add --dev babel-plugin-transform-raw-jsx
 ```
 
+Sorry, I haven't taken the time to upload it on NPM just yet. If you want me to,
+just submit an issue and I'll publish it ASAP.
+
 #### Configure in `.babelrc.js`
 ```javascript
 module.exports = {

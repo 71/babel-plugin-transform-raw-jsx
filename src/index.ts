@@ -894,57 +894,6 @@ export default () => <PluginObj<{ state: PluginState }>>{
 
         path.skip()
       }
-    },
-
-    // ArrowFunctionExpression(path) {
-    //   // TODO: Analyze all call expressions instead, and process parents
-    //   //       from there.
-
-    //   // Process JSX elements first and foremost
-    //   const preprocessing = path.getData('preprocessing')
-
-    //   if (typeof preprocessing != 'boolean') {
-    //     path.setData('preprocessing', true)
-    //     path.visit()
-    //     path.setData('preprocessing', false)
-    //   } else if (path.find(p => p.getData('preprocessing') == true) != null) {
-    //     return
-    //   }
-
-    //   // Initialize visitor
-    //   const state = new State(this.state)
-
-    //   if (!state.hasRuntime)
-    //     return state.visit(path)
-
-    //   // Find reactive properties in passed props
-    //   const props = path.get('params').length > 0 ? path.get('params')[0] : null
-    //   const propsObj = props && props.isIdentifier() && props.node.name
-
-    //   if (!propsObj && props && props.isObjectPattern()) {
-    //     for (const prop of props.get('properties')) {
-    //       if (!prop.isObjectProperty())
-    //         continue
-
-    //       state.reactiveVariables[prop.node.key.name] = 'unknown'
-
-    //       if (prop.node.value == null)
-    //         continue
-          
-    //       const value = prop.get('value')
-
-    //       if (value.isIdentifier()) {
-    //         value.replaceWith(state.makeObservableExpression(value))
-    //         state.reactiveVariables[prop.node.key.name] = 'reactive'
-    //       } else if (value.isAssignmentPattern()) {
-    //         value.get('right').replaceWith(state.makeObservableExpression(value.get('right')))
-    //         state.reactiveVariables[prop.node.key.name] = 'reactive'
-    //       }
-    //     }
-    //   }
-
-    //   // Run the visitor
-    //   state.visit(path)
-    // }
+    }
   }
 }

@@ -1,16 +1,15 @@
 import * as Rx from 'rxjs'
 
+
 /**
  * Defines an observable stream that notifies subscribers of a change of a value.
  */
 export class Observable<T> implements Rx.Subscribable<T> {
   private val: T
   private readonly observers: Rx.PartialObserver<T>[]
-  private readonly deepObserve: boolean
 
-  constructor(value: T, deep: boolean = true) {
+  constructor(value: T) {
     this.observers = []
-    this.deepObserve = deep
 
     this.setUnderlyingValue(value)
   }
@@ -19,18 +18,6 @@ export class Observable<T> implements Rx.Subscribable<T> {
    * Sets the underlying value without notifying subscribers of the change.
    */
   setUnderlyingValue(value: T) {
-    // if (this.deepObserve) {
-    //   if (Array.isArray(value)) {
-    //     // Replace array by watched array
-    //     // TODO
-    //   }
-
-    //   else if (typeof value == 'object') {
-    //     // Replace object by watched object
-    //     // TODO
-    //   }
-    // }
-
     this.val = value
   }
 
@@ -42,6 +29,7 @@ export class Observable<T> implements Rx.Subscribable<T> {
   get value() {
     return this.val
   }
+
   set value(value: T) {
     this.setUnderlyingValue(value)
 
