@@ -329,15 +329,24 @@ As you may have noticed, this causes `handler` to be called every time `todos` c
 which means that the entire list will be removed, and then re-rendered.
 
 In order to avoid going through this, an optional `extras` module is provided,
-which automatically takes care of these problems.
+which provides the function `map` that takes care of this problem.
 
-With the `runtimeExtras` feature enabled, `{ list.map(() => <Item />) }`
-will instead be replaced by another expression that watches changes to `list`,
-and only re-renders elements that need to be re-rendered.
+Therefore, the previous invocation becomes:
+
+```jsx
+import { map } from 'babel-plugin-transform-raw-jsx/runtime/extras'
+
+{ parent => map(parent, todos, ({ text, done }) => (
+  <Todo text={text} done={done} />
+)) }
+```
+
+Now, all calls to `todos.push`, `todos.splice`, `todos.sort`, etc will be intercepted,
+and the DOM will be modified directly instead of having to redraw everything.
 
 
 ## Roadmap
-- [ ] Add ability to access an observable from within a component, instead of taking its value.
+- [X] Add ability to access an observable from within a component, instead of taking its value.
 - [ ] Provide a way to remove elements and their attached event handlers.
 - [ ] Add more tests.
 - [ ] Publish the plugin on NPM.
