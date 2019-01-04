@@ -12,6 +12,7 @@ care of updating elements when needed.
 ## Getting started
 
 #### Add to dependencies
+
 ```
 yarn add --dev babel-plugin-transform-raw-jsx
 ```
@@ -20,7 +21,8 @@ Sorry, I haven't taken the time to upload it on NPM just yet. If you want me to,
 just submit an issue and I'll publish it ASAP.
 
 #### Configure in `.babelrc.js`
-```javascript
+
+```js
 module.exports = {
   plugins: [
     // Note that we need the React transform plugin to run
@@ -55,7 +57,7 @@ simply want to generate some elements without using `document.createElement`,
 `element.setAttribute` and `element.appendChild`, then this plugin can also
 be used without the runtime.
 
-```javascript
+```jsx
 const div: HTMLDivElement = <div>Hello world!</div>
 
 const Link = ({ to }) => (<a href={to} class='fancy-link' />)
@@ -78,7 +80,7 @@ document.body.appendChild(<ListOfLinks links={links} />)
 
 Something close to the following code will be generated.
 
-```javascript
+```js
 const div = document.createElement('div')
 
 const Link = ({ to }) => {
@@ -137,7 +139,7 @@ refresh parts of the DOM when a value it depends on changes.
 
 For instance, here is what a todo list might look like:
 
-```javascript
+```jsx
 interface TodoState {
   text  : string
   done  : boolean
@@ -196,7 +198,7 @@ document.body.appendChild(<TodoApp pageTitle='Hello world' />)
 
 The generated code will look like this:
 
-```javascript
+```js
 import {
   addElement,
   createElement,
@@ -278,7 +280,7 @@ document.body.appendChild(todoApp)
 Note that if we had wanted to change the page title later on, we
 could have done the following:
 
-```javascript
+```js
 const pageTitle = new Observable('Hello world')
 const todoApp = createElement(TodoApp, {
   pageTitle
