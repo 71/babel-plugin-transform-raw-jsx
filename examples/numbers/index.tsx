@@ -1,5 +1,5 @@
 import { Observable, observable } from '../../src/runtime'
-import { map }                    from '../../src/runtime/extras'
+import { map }                    from '../../src/runtime/map'
 
 const numbers: Observable<number[]> = new Observable([])
 

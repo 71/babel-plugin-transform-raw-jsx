@@ -37,7 +37,7 @@ export default ({ types: t }: typeof babel) => {
     /**
      * The prefix used when importing members from the runtime, such as `createElement`
      * and `watch`.
-     * 
+     *
      * When the runtime is disabled, this member is `document`.
      */
     runtimeMemberPrefix: t.Expression | null
@@ -45,7 +45,7 @@ export default ({ types: t }: typeof babel) => {
     /**
      * The prefix used when importing members from the runtime extras, such as
      * `map`.
-     * 
+     *
      * When the runtime is disabled, this member is `null`.
      */
     extrasMemberPrefix: t.Expression | null
@@ -151,7 +151,7 @@ export default ({ types: t }: typeof babel) => {
         return false
 
       const callee = callExpression.callee
-      
+
       return (callee.type == 'Identifier' && callee.name == 'observable')
           || (callee.type == 'MemberExpression' && t.isIdentifier(callee.property, { name: 'observable' }))
     }
@@ -244,7 +244,7 @@ export default ({ types: t }: typeof babel) => {
     private getAddFunction(path: NodePath) {
       if (this.hasRuntime)
         return this.makeRuntimeMemberExpression('addElement')
-      
+
       if (this.addFunction != null)
         return this.addFunction
 

@@ -22,7 +22,7 @@ export class Observable<T> implements Rx.Subscribable<T> {
   }
 
   /** Gets or sets the underlying value.
-   * 
+   *
    * - When getting the value, only the last version is returned.
    * - When setting the value, also notifies all subscribers of the change.
    */
@@ -69,18 +69,28 @@ export class Observable<T> implements Rx.Subscribable<T> {
 /**
  * {T} if {T} is {Observable}, and {Observable<T>} otherwise.
  */
-export type Obs<T> = T extends Observable<any> ? T : Observable<T>
+export type Obs<T> = T extends Observable<infer _> ? T : Observable<T>
+
+/**
+ * {T} or {Observable<T>}.
+ */
+export type ObservableLike<T> = T | Observable<T>
+
+/**
+ * A component function.
+ */
+export type Component<P = {}, E extends Node = Element> = (props: P) => E
 
 
 /**
  * Creates an {HTMLElement}, given its parent, tag, and attributes.
- * 
+ *
  * @param parent The parent of the node to create, to which the node
  *   will be appended. Can be `null`.
  * @param tag The HTML tag of the element to create.
  * @param attrs An optional object that contains attributes that
  *   will be set on the created element.
- * 
+ *
  * @returns The corresponding HTML element.
  */
 export function createElement<K extends keyof HTMLElementTagNameMap>(
@@ -90,13 +100,13 @@ export function createElement<K extends keyof HTMLElementTagNameMap>(
 
 /**
  * Creates an {HTMLElement}, given its parent, component, and attributes.
- * 
+ *
  * @param parent The parent of the node to create, to which the node
  *   will be appended. Can be `null`.
  * @param tag The component of the element to create.
  * @param attrs An optional object that contains attributes and properties that
  *   will be set on the created element.
- * 
+ *
  * @returns The corresponding HTML element.
  */
 export function createElement<K extends (props: object) => Element>(
@@ -161,31 +171,33 @@ export function addElement(parent: HTMLElement, elt: any, inserted: HTMLElement[
   parent.insertBefore(elt, nextDivMarker)
 }
 
-/**
- * Renders the given component to an HTML element.
- */
-export function render(element: JSX.Element): HTMLElement {
-  return element
-}
-
 
 /**
  * Returns whether the given value is an `Observable` stream.
  */
-export function isObservable(value: any): value is Observable<any> {
+export function isObservable<T>(value: ObservableLike<T>): value is Observable<T> {
+  // @ts-ignore
   return value != null && typeof value.subscribe == 'function'
 }
 
 /**
  * Returns an `Observable` stream that wraps the given value.
- * 
+ *
  * If the given value is already an `Observable` stream, it is returned.
  */
-export function observable<T>(value: T): T extends Observable<any> ? T : Observable<T> {
-  if (isObservable(value))
-    return value as any
-  else
-    return new Observable<T>(value) as any
+export function observable<T>(value: ObservableLike<T>): Obs<T> {
+  // @ts-ignore
+  return isObservable(value) ? value : new Observable<T>(value)
+}
+
+/**
+ * Returns the underlying value of the given observable.
+ *
+ * If the given observable is, in fact, not an observable, it is directly returned.
+ */
+export function value<T>(value: ObservableLike<T>): T extends Observable<infer V> ? V : T {
+  // @ts-ignore
+  return isObservable(value) ? value.value : value
 }
 
 /**
@@ -225,7 +237,7 @@ export function merge(...observables: Rx.Subscribable<any>[]): Rx.Subscribable<a
       complete?: () => void
     ): Rx.Unsubscribable => {
       const observer = typeof next == 'function' ? { next, error, complete } : next
-      
+
       observers.push(observer)
 
       return {

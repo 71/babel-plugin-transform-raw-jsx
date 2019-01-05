@@ -89,7 +89,7 @@ const Link = ({ to }) => {
 
   for (const attrKey in attributes)
     a[attrKey] = attributes[attrKey]
-  
+
   return a
 }
 
@@ -113,7 +113,7 @@ const ListOfLinks = ({ listTitle = 'Hello world', links }) => {
 
     return link
   }), ul)
-  
+
   div.appendChild(ul)
 
   return div
@@ -293,7 +293,8 @@ setInterval(() => {
 }, 1000)
 ```
 
-### Note about loops
+
+### Runtime extras: Efficient lists
 
 The generated code for this part of the `TodoApp` component:
 
@@ -330,13 +331,13 @@ handler()
 As you may have noticed, this causes `handler` to be called every time `todos` changes,
 which means that the entire list will be removed, and then re-rendered.
 
-In order to avoid going through this, an optional `extras` module is provided,
+In order to avoid going through this, an optional `map` module is provided,
 which provides the function `map` that takes care of this problem.
 
 Therefore, the previous invocation becomes:
 
 ```jsx
-import { map } from 'babel-plugin-transform-raw-jsx/runtime/extras'
+import { map } from 'babel-plugin-transform-raw-jsx/runtime/map'
 
 { parent => map(parent, todos, ({ text, done }) => (
   <Todo text={text} done={done} />
@@ -345,6 +346,21 @@ import { map } from 'babel-plugin-transform-raw-jsx/runtime/extras'
 
 Now, all calls to `todos.push`, `todos.splice`, `todos.sort`, etc will be intercepted,
 and the DOM will be modified directly instead of having to redraw everything.
+
+
+### Runtime extras: Async components
+
+Four different ways are provided to deal with async components:
+1. A function that wraps a `Promise<Component>` into a simple `Component`.
+2. A function that wraps a `(props) => Promise<Element>` into a simple `Component`.
+3. A component that renders an asynchronous component.
+4. A component that renders a synchronous component, after having resolved its properties
+   asynchronously.
+
+If you have an editor with TypeScript support nearby, you can play with
+[the `async` example](./examples/async/index.tsx) and see that the type checker
+will always make sure all the needed properties are passed, even with wrappers like
+async components.
 
 
 ## Roadmap

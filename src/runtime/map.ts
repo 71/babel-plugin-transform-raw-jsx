@@ -1,4 +1,4 @@
-import { Obs, Observable, isObservable, observable } from '.'
+import { Obs, Observable, ObservableLike, isObservable, observable } from '.'
 
 
 type ArrayProxy<T, ThisType extends any[] = T[]> = {
@@ -16,12 +16,15 @@ class ReactiveItem<T> {
   ) {}
 }
 
+
 /**
- * 
+ * Given a parent element, a source list, and a way to render each element
+ * of the list, sets up a reactive component that only re-renders children
+ * when needed, and wraps each list call into an efficient render-update method.
  */
 export function map<T>(
   parent        : HTMLElement,
-  list          : T[] | Observable<T[]>,
+  list          : ObservableLike<T[]>,
   computeElement: (value: Obs<T>, index: Observable<number>) => HTMLElement
 ) {
   const values: Obs<T>[] = []
@@ -110,7 +113,7 @@ export function map<T>(
       for (let i = 0; i < len; i++) {
         const a = this[i],
               b = this[this.length - 1 - i]
-        
+
         // Swap elements
         const afterB = b.elt.nextElementSibling
         const parent = a.elt.parentElement
@@ -133,12 +136,13 @@ export function map<T>(
       return values
     },
 
-    sort(compareFn?: (a: T, b: T) => number): Obs<T>[] {
+    sort(compareFn?: (a: Obs<T>, b: Obs<T>) => number): Obs<T>[] {
       // The default implementation is likely faster than something I can
       // come up quickly, so we use it, and then substitue values
       if (this.length == 0)
         return
 
+      // @ts-ignore
       this.sort(compareFn != null ? (a, b) => compareFn(a.value.value, b.value.value) : undefined)
 
       const parent = this[0].elt.parentElement
@@ -164,13 +168,13 @@ export function map<T>(
         start = 0
       if (end == null)
         end = this.length
-      
+
       if (isObservable(value))
-        value = value.value
-      
+        value = value.value as T
+
       for (let i = start; i < end; i++)
         this[i].value.value = value
-      
+
       return values
     },
 
