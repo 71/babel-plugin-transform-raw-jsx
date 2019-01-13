@@ -363,8 +363,20 @@ will always make sure all the needed properties are passed, even with wrappers l
 async components.
 
 
+### Component lifecycle
+
+This may seem obvious, considering the example generated code shown above, but while making
+components, the following information should be kept in mind, since rendering with this
+plugin is very different from regular rendering.
+
+- Components are rendered **once**.
+- When a value changes, all the properties that depend on it will automatically be updated.
+- Optionally rendering large components will trigger complete DOM redraws, which can be expensive.
+  It should therefore be avoided.
+
+
 ## Roadmap
 - [X] Add ability to access an observable from within a component, instead of taking its value.
 - [ ] Provide a way to remove elements and their attached event handlers.
 - [ ] Add more tests.
-- [ ] Publish the plugin on NPM.
+- [X] Publish the plugin on NPM.

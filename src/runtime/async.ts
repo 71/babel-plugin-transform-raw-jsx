@@ -1,9 +1,11 @@
-import { value, Component } from '.'
+import { value, Component } from './index'
 
 
 function replace(placeholder: HTMLDivElement, element: Element) {
-  for (const child of placeholder.childNodes)
-    element.append(child)
+  const children = placeholder.childNodes
+
+  for (let i = 0; i < children.length; i++)
+    element.append(children[i])
 
   placeholder.replaceWith(element)
 }
@@ -67,10 +69,10 @@ export function Async<P, E extends Element, K>(
   placeholder.style.setProperty('display', 'none', 'important')
 
   const component = value(_component),
-        props = value(_props['props'] as Promise<P>)
+        props = value((_props as any)['props'] as Promise<P>)
 
   if (typeof component == 'function')
-    props.then(rest => replace(placeholder, component(Object.assign(rest, _props) as any as P & K)))
+    props.then(rest => replace(placeholder, component({ ... rest, ... _props } as any as P & K)))
   else
     component.then(component => replace(placeholder, component(_props as any as P)))
 

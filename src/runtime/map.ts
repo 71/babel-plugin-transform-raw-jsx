@@ -1,4 +1,4 @@
-import { Obs, Observable, ObservableLike, isObservable, observable } from '.'
+import { Obs, Observable, ObservableLike, isObservable, observable } from './index'
 
 
 type ArrayProxy<T, ThisType extends any[] = T[]> = {
@@ -71,7 +71,7 @@ export function map<T>(
 
       reactiveToInsert.push(new ReactiveItem(item, index, element))
 
-      nextSibling.parentElement.insertBefore(element, nextSibling)
+      nextSibling.parentElement!!.insertBefore(element, nextSibling)
     }
 
     for (const { elt } of reactiveItems.splice(start, deleteCount, ...reactiveToInsert))
@@ -85,13 +85,19 @@ export function map<T>(
       return splice(this, values, start, deleteCount, ...items)
     },
 
-    pop(): Obs<T> {
-      this.pop().elt.remove()
+    pop(): Obs<T> | undefined {
+      if (this.length == 0)
+        return
+
+      this.pop()!!.elt.remove()
 
       return values.pop()
     },
-    shift(): Obs<T> {
-      this.shift().elt.remove()
+    shift(): Obs<T> | undefined {
+      if (this.length == 0)
+        return
+
+      this.shift()!!.elt.remove()
 
       return values.shift()
     },
@@ -116,7 +122,7 @@ export function map<T>(
 
         // Swap elements
         const afterB = b.elt.nextElementSibling
-        const parent = a.elt.parentElement
+        const parent = a.elt.parentElement!!
 
         a.elt.replaceWith(b.elt)
         parent.insertBefore(a.elt, afterB)
@@ -140,12 +146,12 @@ export function map<T>(
       // The default implementation is likely faster than something I can
       // come up quickly, so we use it, and then substitue values
       if (this.length == 0)
-        return
+        return []
 
       // @ts-ignore
       this.sort(compareFn != null ? (a, b) => compareFn(a.value.value, b.value.value) : undefined)
 
-      const parent = this[0].elt.parentElement
+      const parent = this[0].elt.parentElement!!
 
       for (let i = 0; i < this.length; i++) {
         // Update reactive item
@@ -161,6 +167,8 @@ export function map<T>(
         // Update item
         values[i] = item.value
       }
+
+      return values
     },
 
     fill(value: T | Obs<T>, start?: number, end?: number): Obs<T>[] {
@@ -190,13 +198,13 @@ export function map<T>(
       }
 
       if (typeof p == 'string') {
-        const trap = traps[p] as Function
+        const trap = traps[p as any] as Function
 
         if (typeof trap == 'function')
           return trap.bind(reactiveItems)
       }
 
-      return values[p]
+      return values[p as any]
     },
 
     set: (values, p, value) => {

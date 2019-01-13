@@ -2,7 +2,7 @@ import babel, { types as t, PluginObj, Visitor } from '@babel/core'
 import { parseExpression } from '@babel/parser'
 import { NodePath, Scope } from '@babel/traverse'
 
-import * as runtime from './runtime'
+import * as runtime from './runtime/index'
 
 /** Whether assertions should be checked. */
 const ASSERTIONS = process.env.NODE_ENV != 'production'
@@ -51,12 +51,13 @@ export default ({ types: t }: typeof babel) => {
     extrasMemberPrefix: t.Expression | null
 
     constructor(opts: object) {
-      this.opts = Object.assign({
+      this.opts = {
         pragma    : 'React.createElement',
 
         runtime: true,
         runtimeImport: 'require("babel-plugin-transform-raw-jsx/runtime")',
-      }, opts)
+        ... opts
+      }
 
       this.isPragma = this.opts.pragma.match(/[^0-9a-z]/i)
         ? path => path.matchesPattern(this.opts.pragma)
@@ -336,7 +337,7 @@ export default ({ types: t }: typeof babel) => {
           const id = path.node.name
           const rep = this.externalDependencies[id]
 
-          if (rep && !dependencies.includes(rep.id))
+          if (rep && dependencies.indexOf(rep.id) == -1)
             dependencies.push(rep.id)
         }
       }
@@ -529,7 +530,7 @@ export default ({ types: t }: typeof babel) => {
         ObjectProperty: (path) => {
           if (!t.isIdentifier(path.node.key))
             return path.skip()
-          
+
           let key = path.node.key.name
 
           if (key == 'ref')
@@ -608,7 +609,7 @@ export default ({ types: t }: typeof babel) => {
         const attrs = args[1]
 
         let nodeVarName: string
-    
+
         if (name.type == 'StringLiteral') {
           nodeVarName = name.value
         } else {
@@ -619,10 +620,10 @@ export default ({ types: t }: typeof babel) => {
         let hasRef = false
 
         if (attrs.node.type == 'ObjectExpression') {
-          const refProp = attrs.node.properties.find(x => x.type == 'ObjectProperty' && t.isIdentifier(x.key, { name: 'ref' }))
+          const refProps = attrs.node.properties.filter(x => x.type == 'ObjectProperty' && t.isIdentifier(x.key, { name: 'ref' }))
 
-          if (refProp != null) {
-            nodeVar = (refProp as t.ObjectProperty).value as t.Identifier
+          if (refProps.length > 0) {
+            nodeVar = (refProps[0] as t.ObjectProperty).value as t.Identifier
             hasRef = true
           }
         }
@@ -930,24 +931,27 @@ export default ({ types: t }: typeof babel) => {
   // Key used to store states when visiting sub-expressions
   const dataKey = 'babel-plugin-transform-raw-jsx-state'
 
-  return <PluginObj<{ state: PluginState }>>{
+  return <PluginObj>{
     name: 'babel-plugin-transform-raw-jsx',
 
     visitor: {
       Program(_, state) {
-        this.state = new PluginState((state as any).opts)
+        this['state'] = new PluginState((state as any).opts)
       },
 
       CallExpression(path) {
         if (path.findParent(x => x.type == 'JSXElement'))
           return
-        if (!this.state.isPragma(path.get('callee')) || path.parent.type == 'JSXElement')
+
+        const pluginState = this['state'] as PluginState
+
+        if (!pluginState.isPragma(path.get('callee')) || path.parent.type == 'JSXElement')
           return
-        
+
         const parentWithState = path.find(x => x.scope.getData(dataKey) != null)
         const parentState = parentWithState != null ? parentWithState.scope.getData(dataKey) as State : null
 
-        const state = new State(this.state, parentState)
+        const state = new State(pluginState, parentState)
 
         path.scope.setData(dataKey, state)
 

@@ -1,4 +1,8 @@
 /.cache/
 /dist/
 /node_modules/
-/yarn*
+/runtime/
+
+/*.d.ts
+/*.lock
+/*.log

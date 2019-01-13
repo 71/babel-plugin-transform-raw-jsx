@@ -1,0 +1,10 @@
+/.cache/
+/examples/
+/test/
+
+/*.js
+/*.lock
+/*.log
+
+/dist/*.html
+/dist/*.*.*

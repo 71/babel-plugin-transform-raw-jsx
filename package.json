@@ -1,21 +1,21 @@
 {
   "name": "babel-plugin-transform-raw-jsx",
-  "version": "0.1.0",
-  "description": "JSX -> HTMLElement direct DOM rendering.",
+  "version": "0.2.0",
+  "description": "JSX -> HTMLElement direct DOM rendering, with automatic updates.",
   "main": "dist/index.js",
   "repository": "https://github.com/71/babel-plugin-transform-raw-jsx",
   "author": "Grégoire Geis <git@gregoirege.is>",
   "license": "MIT",
   "scripts": {
-    "start"        : "parcel src/*.ts",
-    "build"        : "parcel build src/*.ts",
-    "examples"     : "parcel build src/index.ts && cross-env IN_EXAMPLES=true parcel examples/index.pug",
+    "start": "parcel src/*.ts",
+    "buildd": "parcel build src/index.ts --target node && parcel build src/runtime/*.ts -d runtime --target node --global runtime",
+    "build": "webpack",
+    "examples": "parcel build src/index.ts && cross-env IN_EXAMPLES=true parcel examples/index.pug",
     "buildexamples": "parcel build src/index.ts && cross-env IN_EXAMPLES=true parcel build examples/index.pug",
-    "test"         : "node test/index.js"
+    "test": "node test/index.js"
   },
   "peerDependencies": {
-    "@babel/core": "^7.2.2",
-    "@babel/plugin-syntax-jsx": "^7.2.0"
+    "@babel/core": "^7.2.2"
   },
   "devDependencies": {
     "@babel/cli": "^7.2.3",
@@ -27,13 +27,20 @@
     "@types/babel__traverse": "^7.0.4",
     "@types/jest": "^23.3.10",
     "@types/node": "^10.12.18",
+    "awesome-typescript-loader": "^5.2.1",
     "babel-plugin-tester": "^5.5.2",
     "cross-env": "^5.2.0",
+    "express": "^4.16.4",
+    "express-graphql": "^0.7.1",
     "jest": "^23.6.0",
     "parcel-bundler": "^1.11.0",
     "pug": "^2.0.3",
+    "reflect-metadata": "^0.1.12",
     "rxjs": "^6.3.3",
     "ts-jest": "^23.10.5",
-    "typescript": "^3.2.2"
+    "type-graphql": "^0.16.0",
+    "typescript": "^3.2.2",
+    "webpack": "^4.28.4",
+    "webpack-cli": "^3.2.1"
   }
 }
