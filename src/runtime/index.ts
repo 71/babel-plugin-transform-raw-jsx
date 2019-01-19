@@ -66,7 +66,7 @@ export class Observable<T> implements Rx.Subscribable<T> {
   }
 
   /**
-   * @see `subscribe`.
+   * @see subscribe
    */
   observe(...args) {
     return this.subscribe(...args)

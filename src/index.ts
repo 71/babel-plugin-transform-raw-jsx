@@ -742,7 +742,7 @@ export default ({ types: t }: typeof babel) => {
           }
 
           if (parent != null)
-            // parent.appendChild(element)
+            // parent.append(element)
             //   or
             // parent.appendToSlot(slot, element)
             this.stmts.push(
@@ -905,9 +905,14 @@ export default ({ types: t }: typeof babel) => {
               ]
             ),
             t.expressionStatement(
-              this.makeSubscribeExpressionFromDependencies(
-                dependencies,
-                updateFuncVar
+              t.callExpression(
+                t.memberExpression(this.subscriptionsVar, t.identifier('push')),
+                [
+                  this.makeSubscribeExpressionFromDependencies(
+                    dependencies,
+                    updateFuncVar
+                  )
+                ]
               )
             ),
             t.expressionStatement(
