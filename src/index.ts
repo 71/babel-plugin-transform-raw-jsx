@@ -567,18 +567,18 @@ export default ({ types: t }: typeof babel) => {
 
     /**
      * Recursively visits an expression of the type...
-     * 
+     *
      * ```javascript
      * h('div', { foo: bar }, ...children)
      * ```
-     * 
+     *
      * replacing it by an expression of the type...
-     * 
+     *
      * ```javascript
      * const div = createElement('div', { foo: bar.value })
-     * 
+     *
      * parent.appendChild(div)
-     * 
+     *
      * bar.subscribe(() => div.foo = bar.value)
      * ```
      */
@@ -612,6 +612,16 @@ export default ({ types: t }: typeof babel) => {
 
         if (name.type == 'StringLiteral') {
           nodeVarName = name.value
+
+          if (name.value == 'slot') {
+            // TODO: Mark slot
+            if (parent == null)
+              throw path.buildCodeFrameError('A slot cannot be a the top-level of an element.')
+
+            this.stmts.push(
+              // element.set<Name>Slot = () => ...
+            )
+          }
         } else {
           nodeVarName = 'tmp'
         }
@@ -619,12 +629,28 @@ export default ({ types: t }: typeof babel) => {
         let nodeVar = path.scope.generateUidIdentifierBasedOnNode(name, nodeVarName)
         let hasRef = false
 
+        let slot: t.StringLiteral = null
+
         if (attrs.node.type == 'ObjectExpression') {
-          const refProps = attrs.node.properties.filter(x => x.type == 'ObjectProperty' && t.isIdentifier(x.key, { name: 'ref' }))
+          const refProps = attrs.node.properties.filter(x => x.type == 'ObjectProperty'
+                                                          && t.isIdentifier(x.key, { name: 'ref' })
+                                                          && t.isIdentifier(x.value))
 
           if (refProps.length > 0) {
             nodeVar = (refProps[0] as t.ObjectProperty).value as t.Identifier
             hasRef = true
+          }
+
+          const slotProps = attrs.node.properties.filter(x => x.type == 'ObjectProperty'
+                                                           && t.isIdentifier(x.key, { name: 'slot' }))
+
+          if (slotProps.length > 0) {
+            const value = (refProps[0] as t.ObjectProperty).value
+
+            if (t.isStringLiteral(value))
+              slot = value
+            else if (t.isIdentifier(value, { name: 'slot' }))
+              slot = t.stringLiteral('default')
           }
         }
 
@@ -687,13 +713,18 @@ export default ({ types: t }: typeof babel) => {
 
         if (parent != null)
           // parent.appendChild(element)
+          //   or
+          // parent.setSlot(slot, element)
           this.stmts.push(
             t.expressionStatement(
               t.callExpression(
-                t.memberExpression(parent, t.identifier('appendChild')),
-                [
-                  nodeVar
-                ]
+                slot == null
+                  ? t.memberExpression(parent, t.identifier('appendChild'))
+                  : this.makeRuntimeMemberExpression('setSlot'),
+
+                slot == null
+                  ? [ nodeVar ]
+                  : [ slot, nodeVar ]
               )
             )
           )
@@ -733,7 +764,7 @@ export default ({ types: t }: typeof babel) => {
           // to external values
           this.replaceReactiveAccesses(path, true, false)
         }
-        
+
         if (dependencies.length > 0) {
           // A normal expression may return zero, one or more elements,
           // therefore handling them isn't very simple.

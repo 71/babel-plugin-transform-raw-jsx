@@ -1,6 +1,6 @@
-const Todo = ({ text, done, click = () => null }: { text: string, done: boolean, click?: EventListener }) => (
+const Todo = ({ done, click = () => null }: { done: boolean, click?: EventListener }) => (
   <li>
-    <p>{text}</p>
+    <slot />
     <input type='checkbox' checked={done}
            onclick={click}
            oninput={e => done = (e.target as HTMLInputElement).checked} />
@@ -25,7 +25,7 @@ const TodoApp = ({ pageTitle, todos = [], text = '' }: { pageTitle: string, todo
         <li>What am I doing here?</li>
 
         { todos.map(({ text, done }) => (
-          <Todo text={text} done={done} />
+          <Todo done={done}>{text}</Todo>
         )) }
 
         <li>What am I doing here again?</li>

@@ -171,6 +171,14 @@ export function addElement(parent: HTMLElement, elt: any, inserted: HTMLElement[
   parent.insertBefore(elt, nextDivMarker)
 }
 
+export function defineSlot(parent: HTMLElement, slot: string, def: HTMLElement) {
+
+}
+
+export function setSlot(parent: HTMLElement, slot: string, element: HTMLElement) {
+
+}
+
 
 /**
  * Returns whether the given value is an `Observable` stream.
@@ -259,6 +267,7 @@ declare global {
     type IntrinsicElements = {
       [key in keyof HTMLElementTagNameMap]: Partial<HTMLElementTagNameMap[key]> & {
         class?: string
+        slot ?: string | boolean
         ref  ?: HTMLElementTagNameMap[key]
       }
     }
