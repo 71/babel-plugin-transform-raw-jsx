@@ -1,4 +1,4 @@
-import { Obs, Observable, ObservableLike, isObservable, observable } from './index'
+import { Obs, Observable, ObservableLike, isObservable, observable, createMarker } from './index'
 
 
 type ArrayProxy<T, ThisType extends any[] = T[]> = {
@@ -45,9 +45,8 @@ export function map<T>(
     }
   }
 
-  const nextDivMarker = parent.appendChild(document.createElement('div'))
-
-  nextDivMarker.style.setProperty('display', 'none', 'important')
+  const nextMarker = createMarker()
+  parent.append(nextMarker)
 
   function splice(
     reactiveItems: ReactiveItem<T>[],
@@ -57,7 +56,7 @@ export function map<T>(
     ...items     : Obs<T>[]
   ): Obs<T>[] {
     const reactiveToInsert: ReactiveItem<T>[] = []
-    const nextSibling = start >= items.length ? nextDivMarker : reactiveItems[start].elt
+    const nextSibling = start >= items.length ? nextMarker : reactiveItems[start].elt
 
     for (let i = 0; i < items.length; i++) {
       let item = items[i]
@@ -139,6 +138,13 @@ export function map<T>(
         b.index.value = i
       }
 
+      if (len > 0) {
+        const nextNode = this[this.length - 1].elt.nextSibling
+
+        if (nextNode != nextMarker)
+          parent.insertBefore(nextMarker, nextNode)
+      }
+
       return values
     },
 
@@ -162,7 +168,7 @@ export function map<T>(
         // Push element to end of children
         // Since every element is pushed to end in order,
         // this will put them all in their place
-        parent.insertBefore(item.elt, nextDivMarker)
+        parent.insertBefore(item.elt, nextMarker)
 
         // Update item
         values[i] = item.value

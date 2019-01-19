@@ -37,7 +37,7 @@ module.exports = {
 
       // How to prepend all imports; pass `null` if they already
       // are in the global scope.
-      importName: "require('plugin-transform-raw-jsx/runtime')",
+      importName: "require('babel-plugin-transform-raw-jsx/runtime')",
 
       // Whether the runtime should be disabled.
       noRuntime : false,
@@ -363,6 +363,46 @@ will always make sure all the needed properties are passed, even with wrappers l
 async components.
 
 
+### Other features
+
+#### Slots
+
+Slots can be added to components if you wish to modify their content.
+
+```jsx
+const Foo = () => (
+  <div>
+    <slot>
+      This is the content of the default slot. If some code
+      is given (as we'll see), this element will be overriden by
+      the given content.
+      <b>Slots can have as many elements as you want.</b>
+    </slot>
+
+    {/* Slots can also be named and/or have no default content. */}
+    <slot name='after' />
+
+    <b>Any other content can be here.</b>
+  </div>
+)
+
+<Foo>
+  <i>
+    This text will replace the text in the unnamed slot component above.
+  </i>
+
+  <a slot='after'>
+    This will obviously be inserted after that whole text.
+  </a>
+
+  <h4>
+    And if many elements are given for the same slot, they'll be inserted
+    one after the other.
+  </h4>
+</Foo>
+```
+
+
 ### Component lifecycle
 
 This may seem obvious, considering the example generated code shown above, but while making
@@ -377,6 +417,7 @@ plugin is very different from regular rendering.
 
 ## Roadmap
 - [X] Add ability to access an observable from within a component, instead of taking its value.
-- [ ] Provide a way to remove elements and their attached event handlers.
+- [X] Provide a way to remove elements and their attached event handlers.
+  - [ ] Actually track resources in order to make `element.destroy()` more useful.
 - [ ] Add more tests.
 - [X] Publish the plugin on NPM.

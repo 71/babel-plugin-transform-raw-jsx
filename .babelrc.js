@@ -8,7 +8,7 @@ const plugins = [
 ]
 
 if (process.env.IN_EXAMPLES) {
-  plugins.push([require('./dist/index.js'), {
+  plugins.push([require('./dist/index.js').default, {
     pragma : 'h',
 
     runtime: true,

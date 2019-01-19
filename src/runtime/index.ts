@@ -33,8 +33,8 @@ export class Observable<T> implements Rx.Subscribable<T> {
   set value(value: T) {
     this.setUnderlyingValue(value)
 
-    for (const observer of this.observers)
-      observer.next(value)
+    for (let i = 0; i < this.observers.length; i++)
+      this.observers[i].next(value)
   }
 
   /**
@@ -64,6 +64,13 @@ export class Observable<T> implements Rx.Subscribable<T> {
       }
     }
   }
+
+  /**
+   * @see `subscribe`.
+   */
+  observe(...args) {
+    return this.subscribe(...args)
+  }
 }
 
 /**
@@ -80,6 +87,12 @@ export type ObservableLike<T> = T | Observable<T>
  * A component function.
  */
 export type Component<P = {}, E extends Node = Element> = (props: P) => E
+
+type Slot = {
+  elements  : Node[]
+  nextMarker: Node
+  hasDefault: boolean
+}
 
 
 /**
@@ -150,14 +163,16 @@ export function createElement(
 /**
  * Inserts an arbitrarily nested list of elements as a child of `parent`,
  * populating `inserted` at the same time with all the inserted elements.
+ *
+ * Not intended for direct use.
  */
-export function addElement(parent: HTMLElement, elt: any, inserted: HTMLElement[], nextDivMarker: HTMLElement) {
+export function addElement(parent: HTMLElement, elt: any, inserted: Node[], nextMarker: Node) {
   if (!elt)
     return
 
   if (Array.isArray(elt)) {
-    for (const child of elt)
-      addElement(parent, child, inserted, nextDivMarker)
+    for (let i = 0; i < elt.length; i++)
+      addElement(parent, elt[i], inserted, nextMarker)
     return
   }
 
@@ -168,15 +183,81 @@ export function addElement(parent: HTMLElement, elt: any, inserted: HTMLElement[
     elt = new Text(elt)
 
   inserted.push(elt)
-  parent.insertBefore(elt, nextDivMarker)
+  parent.insertBefore(elt, nextMarker)
 }
 
-export function defineSlot(parent: HTMLElement, slot: string, def: HTMLElement) {
-
+/**
+ * Creates a marker node, which is an invisible node before which other elements can be inserted.
+ *
+ * Not intended for direct use.
+ */
+export function createMarker(): Node {
+  return document.createTextNode('')
 }
 
-export function setSlot(parent: HTMLElement, slot: string, element: HTMLElement) {
+/**
+ * Defines a new slot for an element.
+ *
+ * Not intended for direct use.
+ */
+export function defineSlot(element: JSX.Element, slotName: string, def?: Node[]) {
+  if (def != null) {
+    for (let i = 0; i < def.length; i++)
+      element.appendChild(def[i])
+  }
 
+  const marker = element.appendChild(createMarker())
+  const slot: Slot = {
+    hasDefault: def != null,
+    elements  : def || [],
+    nextMarker: marker
+  }
+
+  if (element.slots == null)
+    // @ts-ignore
+    element.slots = { [slotName]: slot }
+  else
+    element.slots[slotName] = slot
+}
+
+/**
+ * Destroys the given element, unsubscribing to all of its `subscriptions`.
+ *
+ * Not intended for direct use.
+ */
+export function destroy(this: JSX.Element) {
+  let node = this || arguments[0]
+
+  node.remove()
+
+  if (node.subscriptions == null)
+    return
+
+  node.subscriptions.splice(0).forEach(sub => sub.unsubscribe)
+
+  if (node.ondestroy != null)
+    node.ondestroy()
+}
+
+/**
+ * Appends the given element or group of elements to the
+ * given slot.
+ *
+ * Not intended for direct use.
+ */
+export function appendToSlot(this: JSX.Element, slot: string, elt: any) {
+  if (this.slots == null || !(slot in this.slots))
+    throw new Error(`Unknown slot '${slot}' given.`)
+
+  const { elements, nextMarker, hasDefault } = this.slots[slot]
+
+  if (hasDefault) {
+    const parent = nextMarker.parentElement
+    elements.splice(0).forEach(parent.removeChild.bind(parent))
+    Object.assign(this.slots[slot], { hasDefault: false, elements })
+  }
+
+  addElement(nextMarker.parentElement, elt, elements, nextMarker)
 }
 
 
@@ -231,8 +312,8 @@ export function merge(...observables: Rx.Subscribable<any>[]): Rx.Subscribable<a
   const observers: Rx.PartialObserver<any>[] = []
   const subscriptions: Rx.Unsubscribable[] = []
 
-  for (const observable of observables) {
-    subscriptions.push(observable.subscribe(v => {
+  for (let i = 0; i < observables.length; i++) {
+    subscriptions.push(observables[i].subscribe(v => {
       for (const observer of observers)
         observer.next(v)
     }))
@@ -262,12 +343,20 @@ export function merge(...observables: Rx.Subscribable<any>[]): Rx.Subscribable<a
 declare global {
   // See https://www.typescriptlang.org/docs/handbook/jsx.html
   namespace JSX {
-    type Element = HTMLElement
+    type Element = HTMLElement & {
+      ondestroy?: () => void
+
+      readonly destroy     : () => void
+      readonly appendToSlot: (slot: string, child: any) => void
+
+      readonly slots?: Record<string, Slot>
+      readonly subscriptions?: Rx.Unsubscribable[]
+    }
 
     type IntrinsicElements = {
       [key in keyof HTMLElementTagNameMap]: Partial<HTMLElementTagNameMap[key]> & {
         class?: string
-        slot ?: string | boolean
+        slot ?: string
         ref  ?: HTMLElementTagNameMap[key]
       }
     }
