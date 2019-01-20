@@ -167,6 +167,9 @@ export function createElement(
  * Not intended for direct use.
  */
 export function addElement(parent: HTMLElement, elt: any, inserted: Node[], nextMarker: Node) {
+  if (typeof parent['appendToSlot'] == 'function')
+    return (parent as JSX.Element).appendToSlot('default', elt)
+
   if (!elt)
     return
 
@@ -200,28 +203,28 @@ export function createMarker(): Node {
  *
  * Not intended for direct use.
  */
-export function defineSlot(element: JSX.Element, slotName: string, def?: any[]) {
+export function defineSlot(ownerElement: JSX.Element, parentElement: JSX.Element, slotName: string, def?: any[]) {
   if (def != null) {
     for (let i = 0; i < def.length; i++) {
       if (!(def[i] instanceof Node))
         def[i] = new Text(def[i])
 
-      element.appendChild(def[i])
+      parentElement.appendChild(def[i])
     }
   }
 
-  const marker = element.appendChild(createMarker())
+  const marker = parentElement.appendChild(createMarker())
   const slot: Slot = {
     hasDefault: def != null,
     elements  : def || [],
     nextMarker: marker
   }
 
-  if (element.slots == null)
+  if (ownerElement.slots == null)
     // @ts-ignore
-    element.slots = { [slotName]: slot }
+    ownerElement.slots = { [slotName]: slot }
   else
-    element.slots[slotName] = slot
+    ownerElement.slots[slotName] = slot
 }
 
 /**
@@ -350,8 +353,8 @@ declare global {
     type Element = HTMLElement & {
       ondestroy?: () => void
 
-      readonly destroy     : () => void
-      readonly appendToSlot: (slot: string, child: any) => void
+      destroy(): void
+      appendToSlot(slot: string, child: any): void
 
       readonly slots?: Record<string, Slot>
       readonly subscriptions?: Rx.Unsubscribable[]

@@ -116,6 +116,11 @@ export default ({ types: t }: typeof babel) => {
     private rootPath: NodePath<t.CallExpression>
 
     /**
+     * The variable name of the root element.
+     */
+    private rootVarName: t.Identifier
+
+    /**
      * Name of the `addElements` function, if it was defined.
      */
     private addFunction: t.Identifier
@@ -595,14 +600,17 @@ export default ({ types: t }: typeof babel) => {
       if (node.type == 'StringLiteral') {
         // String literal: simply push as child
 
-        this.stmts.push(t.expressionStatement(
-          t.callExpression(
-            t.memberExpression(parent, t.identifier('append')),
-            [
-              t.stringLiteral(node.value)
-            ]
-          )
-        ))
+        this.stmts.push(
+          t.expressionStatement(
+            t.callExpression(
+              t.memberExpression(
+                parent, t.identifier(parentKind == 'slot' ? 'push'
+                                   : parentKind == 'intrinsic' ? 'append'
+                                   : 'appendToSlot')),
+
+              parentKind == 'component'
+                ? [ t.stringLiteral('default'), t.stringLiteral(node.value) ]
+                : [ t.stringLiteral(node.value) ])))
       }
 
       else if (node.type == 'CallExpression' && this.plugin.isPragma(path.get('callee') as NodePath<t.Node>)) {
@@ -633,6 +641,11 @@ export default ({ types: t }: typeof babel) => {
 
         let nodeVar = path.scope.generateUidIdentifierBasedOnNode(name, nodeVarName)
         let hasRef = false
+
+        if (this.rootVarName == null) {
+          // We're visiting the root element, so we initialize its name
+          this.rootVarName = nodeVar
+        }
 
         let slot: t.Expression = t.stringLiteral('default')
 
@@ -770,6 +783,7 @@ export default ({ types: t }: typeof babel) => {
               t.callExpression(
                 this.makeRuntimeMemberExpression('defineSlot'),
                 [
+                  this.rootVarName,
                   parent,
                   slot,
                   args.length == 2
@@ -892,7 +906,7 @@ export default ({ types: t }: typeof babel) => {
 
                       // 2. Add elements recursively
 
-                      // addElement(parent, <value>, inserted, nextDivMarker)
+                      // addElement(parent, <value>, inserted, nextMarker)
                       t.expressionStatement(
                         t.callExpression(
                           this.getAddFunction(path),
