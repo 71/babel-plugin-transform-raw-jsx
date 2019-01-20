@@ -1,6 +1,6 @@
 {
   "name": "babel-plugin-transform-raw-jsx",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "JSX -> HTMLElement direct DOM rendering, with automatic updates.",
   "main": "dist/index.js",
   "repository": "https://github.com/71/babel-plugin-transform-raw-jsx",
