@@ -176,11 +176,11 @@ export function addElement(parent: HTMLElement, elt: any, inserted: Node[], next
     return
   }
 
-  if (inserted == null)
-    return parent.appendChild(elt)
-
   if (!(elt instanceof Node))
     elt = new Text(elt)
+
+  if (inserted == null)
+    return parent.appendChild(elt)
 
   inserted.push(elt)
   parent.insertBefore(elt, nextMarker)
@@ -200,10 +200,14 @@ export function createMarker(): Node {
  *
  * Not intended for direct use.
  */
-export function defineSlot(element: JSX.Element, slotName: string, def?: Node[]) {
+export function defineSlot(element: JSX.Element, slotName: string, def?: any[]) {
   if (def != null) {
-    for (let i = 0; i < def.length; i++)
+    for (let i = 0; i < def.length; i++) {
+      if (!(def[i] instanceof Node))
+        def[i] = new Text(def[i])
+
       element.appendChild(def[i])
+    }
   }
 
   const marker = element.appendChild(createMarker())
