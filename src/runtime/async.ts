@@ -1,13 +1,19 @@
 import { value, Component } from './index'
 
 
-function replace(placeholder: Text, element: Element) {
+function replace(placeholder: Element, element: Element) {
   const children = placeholder.childNodes
 
-  for (let i = 0; i < children.length; i++)
-    element.append(children[i])
+  while (children.length > 0)
+    element.append(children[0])
 
   placeholder.replaceWith(element)
+}
+
+function createPlaceholder() {
+  const placeholder = document.createElement('div')
+  placeholder.style.setProperty('display', 'none', 'important')
+  return placeholder
 }
 
 
@@ -26,14 +32,14 @@ export function async<P extends {}, E extends Element>(component: (props: P) => 
 export function async<P extends {}, E extends Element>(component: Promise<E> | ((props: P) => Promise<E>)): E | Component<P, E> {
   if (typeof component == 'function') {
     return props => {
-      const placeholder = document.createTextNode('')
+      const placeholder = createPlaceholder()
 
       component(props).then(component => replace(placeholder, component))
 
       return placeholder as any as E
     }
   } else {
-    const placeholder = document.createTextNode('')
+    const placeholder = createPlaceholder()
 
     component.then(component => replace(placeholder, component))
 
@@ -60,7 +66,7 @@ export function Async<P extends {}, E extends Element, K extends {}>(
     (P & { component: Promise<Component<P, E>> }) |
     (P & { component: Component<P & K, E>, props: Promise<K> })
 ): E {
-  const placeholder = document.createTextNode(''),
+  const placeholder = createPlaceholder(),
         component = value(_component),
         props = value((_props as any)['props'] as Promise<P>)
 

@@ -227,16 +227,16 @@ const Todo = ({ text, done, click = () => null }: TodoState) => {
 
   //     {text}
   const inserted = []
-  const nextMarker = p.appendChild(document.createElement('div'))
+  const insertionPoint = p.appendChild(document.createElement('div'))
 
-  nextMarker.style.display = 'none'
+  insertionPoint.style.display = 'none'
 
   const handler = () => {
     // We don't want to keep the previous elements, so we remove them
     inserted.splice(0, inserted.length).forEach(p.removeChild.bind(p))
 
-    // This will insert all elements in 'text.value' before 'nextMarker'
-    addElement(p, text.value, inserted, nextMarker)
+    // This will insert all elements in 'text.value' before 'insertionPoint'
+    addElement(p, text.value, inserted, insertionPoint)
   }
 
   // 'handler' will be called everytime 'text' changes
@@ -307,10 +307,10 @@ The generated code for this part of the `TodoApp` component:
 Would look like this:
 
 ```js
-const insertedTodos = []
-const nextMarker    = ul.appendChild(document.createElement('div'))
+const insertedTodos  = []
+const insertionPoint = ul.appendChild(document.createElement('div'))
 
-nextMarker.style.display = 'none'
+insertionPoint.style.display = 'none'
 
 const handler = () => {
   insertedTodos.splice(0, insertedTodos.length).forEach(ul.removeChild.bind(ul))
@@ -320,7 +320,7 @@ const handler = () => {
           done = isObservable(text) ? done : new Observable(done)
 
     return createElement(Todo, { text, done })
-  }), insertedTodos, nextMarker)
+  }), insertedTodos, insertionPoint)
 }
 
 todos.subscribe(handler)
@@ -363,46 +363,6 @@ will always make sure all the needed properties are passed, even with wrappers l
 async components.
 
 
-### Other features
-
-#### Slots
-
-Slots can be added to components if you wish to modify their content.
-
-```jsx
-const Foo = () => (
-  <div>
-    <slot>
-      This is the content of the default slot. If some code
-      is given (as we'll see), this element will be overriden by
-      the given content.
-      <b>Slots can have as many elements as you want.</b>
-    </slot>
-
-    {/* Slots can also be named and/or have no default content. */}
-    <slot name='after' />
-
-    <b>Any other content can be here.</b>
-  </div>
-)
-
-<Foo>
-  <i>
-    This text will replace the text in the unnamed slot component above.
-  </i>
-
-  <a slot='after'>
-    This will obviously be inserted after that whole text.
-  </a>
-
-  <h4>
-    And if many elements are given for the same slot, they'll be inserted
-    one after the other.
-  </h4>
-</Foo>
-```
-
-
 ### Component lifecycle
 
 This may seem obvious, considering the example generated code shown above, but while making
@@ -418,6 +378,6 @@ plugin is very different from regular rendering.
 ## Roadmap
 - [X] Add ability to access an observable from within a component, instead of taking its value.
 - [X] Provide a way to remove elements and their attached event handlers.
-  - [ ] Actually track resources in order to make `element.destroy()` more useful.
+  - [X] Actually track resources in order to make `element.destroy()` more useful.
 - [ ] Add more tests.
 - [X] Publish the plugin on NPM.

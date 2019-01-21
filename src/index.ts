@@ -1,4 +1,4 @@
-import babel, { types as t, PluginObj, Visitor } from '@babel/core'
+import babel, { types as t, template as tmpl, PluginObj, Visitor } from '@babel/core'
 import { parseExpression } from '@babel/parser'
 import { NodePath, Scope } from '@babel/traverse'
 
@@ -13,7 +13,7 @@ const ASSERTIONS = process.env.NODE_ENV != 'production'
 /**
  * Initialize the plugin.
  */
-export default ({ types: t }: typeof babel) => {
+export default ({ types: t, template: tmpl }: typeof babel) => {
 
   /**
    * State of the entire plugin.
@@ -48,6 +48,7 @@ export default ({ types: t }: typeof babel) => {
 
         runtime: true,
         runtimeImport: 'require("babel-plugin-transform-raw-jsx/runtime")',
+
         ... opts
       }
 
@@ -100,15 +101,14 @@ export default ({ types: t }: typeof babel) => {
     private readonly stmts: t.Statement[]
 
     /**
-     * Names that have been given to slots. Used to ensure there aren't
-     * duplicate names.
-     */
-    private readonly givenSlotNames: string[]
-
-    /**
      * `subscriptions` variable.
      */
     private subscriptionsVar: t.Identifier
+
+    /**
+     * `delayedInitializers` variable.
+     */
+    private delayedInitializers: t.Expression[]
 
     /**
      * Root call expression that is being processed.
@@ -127,7 +127,6 @@ export default ({ types: t }: typeof babel) => {
 
     constructor(public plugin: PluginState, parent?: State) {
       this.stmts = []
-      this.givenSlotNames = []
       this.externalDependencies = {}
 
       if (parent) {
@@ -263,12 +262,12 @@ export default ({ types: t }: typeof babel) => {
       const loopVariableName   = path.scope.generateUidIdentifier('x')
 
       this.stmts.unshift(
-        // const addElement = (parent, elt, inserted, nextDivMarker) => {
+        // const addElement = (parent, elt, inserted, insertionPoint) => {
         //   if (elt == null)
         //     return
         //   if (Array.isArray(elt)) {
         //     for (const item of elt)
-        //       addElement(parent, child, inserted, nextDivMarker)
+        //       addElement(parent, child, inserted, insertionPoint)
         //     return
         //   }
         //
@@ -590,54 +589,62 @@ export default ({ types: t }: typeof babel) => {
      * ```
      */
     private visitElement(
-      parent    : t.Identifier | null,
-      parentKind: 'component' | 'intrinsic' | 'slot',
-      path      : NodePath<t.Expression>,
-      lastChild : boolean
+      parent        : t.Identifier | null,
+      parentChildren: t.Identifier,
+      path     : NodePath<t.Expression>,
+      lastChild: boolean
     ) {
       const node = path.node
 
+      const tmplOptions = { placeholderPattern: /^\$\w+$/ }
+      const pushToParentTmpl = parentChildren == null
+        ? tmpl.statement(`$parent.append($expr)`, tmplOptions)
+        : tmpl.statement(`$parent.value.push($expr)`, tmplOptions)
+
+      const _ = (obj) => {
+        for (const prop in obj) {
+          obj['$' + prop] = obj[prop]
+          delete obj[prop]
+        }
+        return obj
+      }
+
+      const pushToParent = (expr: t.Identifier | t.StringLiteral) =>
+        this.stmts.push(pushToParentTmpl(_({ parent: parentChildren || parent, expr })))
+
+      const replaceElementsInParentTmpl = parentChildren == null
+        ? tmpl.statements(`$inserted.splice(0).forEach($destroy);
+                           $addElement($expr, $insertionPoint, $inserted)`, tmplOptions)
+        : tmpl.statements(`$parentChildren.value
+                            .splice($parentChildren.value.indexOf($insertionPoint) - $inserted.length, $inserted.length, $expr)
+                            .forEach($destroy)`, tmplOptions)
+
+      const replaceElementsInParent = (expr: t.Expression, insertionPoint: t.Identifier, inserted: t.Identifier) =>
+        t.blockStatement(replaceElementsInParentTmpl(
+          _({ ...(parentChildren != null ? { parentChildren } : { addElement: this.makeRuntimeMemberExpression('addElement') }), insertionPoint, inserted, expr,
+          destroy: this.makeRuntimeMemberExpression('destroy') })))
+
       if (node.type == 'StringLiteral') {
         // String literal: simply push as child
-
-        this.stmts.push(
-          t.expressionStatement(
-            t.callExpression(
-              t.memberExpression(
-                parent, t.identifier(parentKind == 'slot' ? 'push'
-                                   : parentKind == 'intrinsic' ? 'append'
-                                   : 'appendToSlot')),
-
-              parentKind == 'component'
-                ? [ t.stringLiteral('default'), t.stringLiteral(node.value) ]
-                : [ t.stringLiteral(node.value) ])))
+        pushToParent(node)
       }
 
       else if (node.type == 'CallExpression' && this.plugin.isPragma(path.get('callee') as NodePath<t.Node>)) {
         // Call expression to pragma:
         // - create element
         // - append created element to parent
+        // - repeat two previous steps recursively for all children
         // - if needed, subscribe to changes and make sure values get updated if needed
 
         const args = path.get('arguments') as NodePath<t.Expression>[]
         const name = args[0].node
         const attrs = args[1]
 
-        let nodeVarName: string
-        let isSlot = false
+        const selfKind = name.type == 'StringLiteral' ? 'intrinsic' : 'component'
 
-        if (name.type == 'StringLiteral') {
-          nodeVarName = name.value
-
-          if (name.value == 'slot') {
-            if (parent == null)
-              throw path.buildCodeFrameError('A slot cannot be a the top-level of an element.')
-
-            isSlot = true
-          }
-        } else {
-          nodeVarName = 'tmp'
-        }
+        const nodeVarName = selfKind == 'intrinsic'
+          ? (name as t.StringLiteral).value
+          : 'tmp'
 
         let nodeVar = path.scope.generateUidIdentifierBasedOnNode(name, nodeVarName)
         let hasRef = false
@@ -646,8 +653,6 @@ export default ({ types: t }: typeof babel) => {
           // We're visiting the root element, so we initialize its name
           this.rootVarName = nodeVar
         }
-
-        let slot: t.Expression = t.stringLiteral('default')
 
         if (attrs.node.type == 'ObjectExpression') {
           const refProps = attrs.node.properties.filter(x => x.type == 'ObjectProperty'
@@ -658,155 +663,89 @@ export default ({ types: t }: typeof babel) => {
             nodeVar = (refProps[0] as t.ObjectProperty).value as t.Identifier
             hasRef = true
           }
-
-          const slotProps = attrs.node.properties.filter(x => x.type == 'ObjectProperty'
-                                                           && t.isIdentifier(x.key, { name: 'slot' }))
-
-          if (slotProps.length > 0) {
-            if (parentKind != 'component')
-              throw path.buildCodeFrameError('Slots can only be given for custom components.')
-
-            slot = (slotProps[0] as t.ObjectProperty).value as t.Expression
-          }
-
-          if (isSlot) {
-            const nameProps = attrs.node.properties.filter(x => x.type == 'ObjectProperty'
-                                                             && t.isIdentifier(x.key, { name: 'name' }))
-            let maxAttrs = 0
-
-            if (nameProps.length > 0) {
-              slot = (nameProps[0] as t.ObjectProperty).value as t.Expression
-              maxAttrs = 1
-            }
-
-            if (attrs.node.properties.length > maxAttrs)
-              throw path.buildCodeFrameError('Slots cannot have properties.')
-          }
         }
 
-        if (isSlot) {
-          if (t.isStringLiteral(slot)) {
-            const slotName = slot.value
+        if (this.hasRuntime && attrs.isObjectExpression())
+          this.processAttributes(attrs)
 
-            if (this.givenSlotNames.indexOf(slotName) != -1)
-              throw path.buildCodeFrameError('Multiple slots cannot have the same name.')
+        const attrsVar = this.hasRuntime || attrs.isNullLiteral()
+          ? null
+          : path.scope.generateUidIdentifier(nodeVarName + 'attrs')
 
-            this.givenSlotNames.push(slotName)
-          }
-
+        if (attrsVar != null)
           this.stmts.push(
-            // const element = []
-            t.variableDeclaration('const', [ t.variableDeclarator(nodeVar, t.arrayExpression([])) ]))
-        } else {
-          if (this.hasRuntime && attrs.isObjectExpression())
-            this.processAttributes(attrs)
-
-          let attrsVar = this.hasRuntime || attrs.isNullLiteral()
-            ? null
-            : path.scope.generateUidIdentifier(name.type == 'StringLiteral' ? name.value + 'attrs' : 'attrs')
-
-          if (attrsVar != null)
-            this.stmts.push(
-              // const attrs = { ...props }
-              t.variableDeclaration('const', [ t.variableDeclarator(attrsVar, attrs.node) ]))
+            // const attrs = { ...props }
+            t.variableDeclaration('const', [ t.variableDeclarator(attrsVar, attrs.node) ]))
 
 
-          // Replace  h('element', { ...props }, [...children])
-          // by       const element = createElement('element', { ...props })
-          //          element.appendToSlot('default', [...children])
-          //          ...
-          const element = this.hasRuntime || name.type == 'StringLiteral'
-            ? t.callExpression(
-                this.makeRuntimeMemberExpression('createElement'),
-                this.hasRuntime ? [ name, attrs.node ] : [ name ]
-              )
-            : t.callExpression(
-                name, [ attrsVar ]
-              )
+        const childrenVar = this.hasRuntime && name.type != 'StringLiteral'
+            ? path.scope.generateUidIdentifier('children')
+            : null
 
-          if (hasRef)
-            this.stmts.push(t.expressionStatement(
-              t.assignmentExpression('=', nodeVar, element)
-            ))
-          else
-            this.stmts.push(t.variableDeclaration('const', [
-              t.variableDeclarator(nodeVar, element)
-            ]))
+        // Replace
+        //  h('element', { ...props })
+        // by
+        //  runtime.createElement('element', { ...props })
+        const element = this.hasRuntime || name.type == 'StringLiteral'
+          ? t.callExpression(
+              this.makeRuntimeMemberExpression('createElement'),
+              this.hasRuntime
+                ? [ name, attrs.node, childrenVar || t.identifier('undefined') ]
+                : [ name ])
+          : t.callExpression(name, [ attrsVar ])
 
-          if (attrsVar != null) {
-            const loopVar = path.scope.generateUidIdentifier('attr')
+        if (hasRef)
+          //  <ref> = <element>
+          this.stmts.push(t.expressionStatement(
+            t.assignmentExpression('=', nodeVar, element))
+          )
+        else
+          //  const element = <element>
+          this.stmts.push(t.variableDeclaration('const', [
+            t.variableDeclarator(nodeVar, element) ])
+          )
 
-            // Add attributes manually
-            this.stmts.push(
-              t.forInStatement(
-                t.variableDeclaration('const', [ t.variableDeclarator(loopVar) ]),
-                attrsVar,
-                t.expressionStatement(
-                  t.callExpression(
-                    t.memberExpression(nodeVar, t.identifier('setAttribute')),
-                    [
-                      loopVar,
-                      t.memberExpression(attrsVar, loopVar, true)
-                    ]
-                  )
-                )
-              )
-            )
-          }
 
-          if (parent != null)
-            // parent.append(element)
-            //   or
-            // parent.appendToSlot(slot, element)
-            this.stmts.push(
-              t.expressionStatement(
-                t.callExpression(
-                  t.memberExpression(
-                    parent, t.identifier(parentKind == 'slot' ? 'push'
-                                       : parentKind == 'intrinsic' ? 'append'
-                                       : 'appendToSlot')),
-
-                  parentKind == 'component'
-                    ? [ slot, nodeVar ]
-                    : [ nodeVar ])))
-        }
-
-        const selfKind = isSlot ? 'slot' : name.type == 'StringLiteral' ? 'intrinsic' : 'component'
-
-        for (let i = 2; i < args.length; i++)
-          this.visitElement(nodeVar, selfKind, args[i], i == args.length - 1)
-
-        if (isSlot) {
+        if (childrenVar)
           this.stmts.push(
-            // runtime.defineSlot(element, name, default)
+            //  const children = new runtime.Observable([])
+            t.variableDeclaration('const',
+              [ t.variableDeclarator(childrenVar,
+                  t.newExpression(
+                    this.makeRuntimeMemberExpression('Observable'),
+                    [ t.arrayExpression([]) ]))]),
+
+            //  runtime.insertChildren(node, children)
             t.expressionStatement(
               t.callExpression(
-                this.makeRuntimeMemberExpression('defineSlot'),
-                [
-                  this.rootVarName,
-                  parent,
-                  slot,
-                  args.length == 2
-                    ? t.nullLiteral()
-                    : nodeVar
-                ])))
-        }
-
-        return nodeVar
-      }
-
-      else if (path.isFunctionExpression() || path.isArrowFunctionExpression()) {
-        // Arrow function: give it the parent and let it do its thing
-        this.stmts.push(
-          t.expressionStatement(
-            t.callExpression(
-              path.node,
-              [
-                parent
-              ]
+                this.makeRuntimeMemberExpression('insertChildren'),
+                [ nodeVar, childrenVar ])
             )
           )
-        )
+
+        if (attrsVar != null) {
+          const loopVar = path.scope.generateUidIdentifier('attr')
+
+          // Add attributes manually
+          this.stmts.push(
+            t.forInStatement(
+              t.variableDeclaration('const', [ t.variableDeclarator(loopVar) ]),
+              attrsVar,
+              t.expressionStatement(
+                t.callExpression(
+                  t.memberExpression(nodeVar, t.identifier('setAttribute')),
+                  [ loopVar, t.memberExpression(attrsVar, loopVar, true) ])))
+          )
+        }
+
+        if (parent != null)
+          //  parent.append(element)
+          pushToParent(nodeVar)
+
+        for (let i = 2; i < args.length; i++)
+          this.visitElement(nodeVar, childrenVar, args[i], i == args.length - 1)
+
+        return nodeVar
       }
 
       else if (path.isExpression()) {
@@ -832,119 +771,67 @@ export default ({ types: t }: typeof babel) => {
           // What we must therefore do is to keep a list of all the elements
           // that this expression return, and update them when needed.
           const elementsVar = path.scope.generateUidIdentifierBasedOnNode(node)
-          const nextMarkerVar = lastChild
-            ? t.identifier('undefined')
-            : path.scope.generateUidIdentifier('nextMarker')
+          const insertionPointVar = path.scope.generateUidIdentifier('insertionPoint')
 
           // Add a list that stores all inserted elements (for easy removal later on)
 
-          // const inserted = []
+          //  const inserted = []
           this.stmts.push(t.variableDeclaration('const', [
             t.variableDeclarator(
               elementsVar,
-              t.arrayExpression()
-            )
-          ]))
+              t.arrayExpression()) ])
+          )
 
           // Add marker to know where elements should be inserted
-
-          if (!lastChild)
-            this.stmts.push(
-              // const nextMarker = runtime.createMarker()
-              t.variableDeclaration('const', [
-                t.variableDeclarator(
-                  nextMarkerVar,
-                  t.callExpression(
-                    this.makeRuntimeMemberExpression('createMarker'), []
-                  )
-                )
-              ]),
-
-              // parent.append(nextMarker)
-              t.expressionStatement(
+          this.stmts.push(
+            //  const insertionPoint = runtime.createInsertionPoint()
+            t.variableDeclaration('const', [
+              t.variableDeclarator(
+                insertionPointVar,
                 t.callExpression(
-                  t.memberExpression(parent, t.identifier('append')),
-                  [
-                    nextMarkerVar
-                  ]
-                )
-              )
-            )
+                  this.makeRuntimeMemberExpression('createInsertionPoint'), [])) ])
+          )
+
+          //  parent.append(insertionPoint)
+          pushToParent(insertionPointVar)
+
 
           // Merge property stream in order to update things
           const updateFuncVar = path.scope.generateUidIdentifier()
 
           this.stmts.push(
+            // Here we define a function that will be called during initialization,
+            // and when reactive dependencies change.
+            //  const update = () => {
             t.variableDeclaration(
               'const',
-              [
-                t.variableDeclarator(
+              [ t.variableDeclarator(
                   updateFuncVar,
                   t.arrowFunctionExpression(
                     [],
-                    t.blockStatement([
-                      // 1. Remove previously added elements
+                    replaceElementsInParent(path.node, insertionPointVar, elementsVar))) ]),
+            //  }
 
-                      // inserted.splice(0, inserted.length).forEach(runtime.destroy)
-                      t.expressionStatement(
-                        t.callExpression(
-                          t.memberExpression(
-                            t.callExpression(
-                              t.memberExpression(elementsVar, t.identifier('splice')),
-                              [
-                                t.numericLiteral(0),
-                                t.memberExpression(elementsVar, t.identifier('length'))
-                              ]
-                            ),
-                            t.identifier('forEach')
-                          ),
-                          [
-                            this.makeRuntimeMemberExpression('destroy')
-                          ]
-                        )
-                      ),
-
-                      // 2. Add elements recursively
-
-                      // addElement(parent, <value>, inserted, nextMarker)
-                      t.expressionStatement(
-                        t.callExpression(
-                          this.getAddFunction(path),
-                          [ parent, path.node, elementsVar, nextMarkerVar ]
-                        )
-                      )
-                    ])
-                  )
-                )
-              ]
-            ),
             t.expressionStatement(
+              // Subscribe to changes
+              //  subscriptions.push(dependencies.subscribe(update))
               t.callExpression(
                 t.memberExpression(this.subscriptionsVar, t.identifier('push')),
-                [
-                  this.makeSubscribeExpressionFromDependencies(
-                    dependencies,
-                    updateFuncVar
-                  )
-                ]
-              )
-            ),
+                [ this.makeSubscribeExpressionFromDependencies(dependencies, updateFuncVar) ])),
+
             t.expressionStatement(
-              t.callExpression(updateFuncVar, [])
-            )
+              // Initialize content
+              //  update()
+              t.callExpression(updateFuncVar, []))
           )
         } else {
-          // No runtime or no dependency, so we insert elements directly
+          // No runtime, no dependency and simple insertion, so we insert elements directly
           this.stmts.push(
-            t.blockStatement([
-              // addElement(parent, <value>)
-              t.expressionStatement(
-                t.callExpression(
-                  this.getAddFunction(path),
-                  [ parent, path.node ]
-                )
-              )
-            ])
+            //  addElement(<value>, parent)
+            t.expressionStatement(
+              t.callExpression(
+                this.getAddFunction(path),
+                [ path.node, parent ]))
           )
         }
       }
@@ -958,18 +845,20 @@ export default ({ types: t }: typeof babel) => {
       const isIntrinsicRoot = t.isStringLiteral(path.node.arguments[0])
 
       this.rootPath = path
+      this.delayedInitializers = []
+
       this.subscriptionsVar = path.scope.generateUidIdentifier('subscriptions')
 
       this.stmts.push(
-        // const subscriptions = []
+        //  const subscriptions = []
         t.variableDeclaration('const', [
           t.variableDeclarator(this.subscriptionsVar, t.arrayExpression([]))
-        ]),
+        ])
       )
 
       // We don't use a visitor here because we only want to visit
       // the top node in 'path'
-      const varName = this.visitElement(null, 'component', path, true)
+      const varName = this.visitElement(null, null, path, true)
 
 
       // Initialize reactive external variables
@@ -990,46 +879,53 @@ export default ({ types: t }: typeof babel) => {
 
       if (isIntrinsicRoot) {
         this.stmts.push(
-          // if (subscriptions.length > 0)
-          //   element.subscriptions = subscriptions
-          t.ifStatement(
-            t.binaryExpression(
-              '>',
-              t.memberExpression(this.subscriptionsVar, t.identifier('length')),
-              t.numericLiteral(0)
-            ),
-            t.expressionStatement(
-              t.assignmentExpression(
-                '=',
-                t.memberExpression(varName, t.identifier('subscriptions')),
-                this.subscriptionsVar
+          //  element.subscriptions = subscriptions
+          t.expressionStatement(
+            t.assignmentExpression(
+              '=',
+              t.memberExpression(varName, t.identifier('subscriptions')),
+              this.subscriptionsVar
+            )
+          ),
+
+          //  element.destroy = runtime.destroy.bind(element)
+          t.expressionStatement(
+            t.assignmentExpression(
+              '=',
+              t.memberExpression(varName, t.identifier('destroy')),
+              t.callExpression(
+                t.memberExpression(
+                  this.makeRuntimeMemberExpression('destroy'),
+                  t.identifier('bind')
+                ),
+                [
+                  varName
+                ]
               )
             )
           )
         )
-
+      } else {
         this.stmts.push(
-          // element.destroy = runtime.destroy.bind(element)
-          // element.setSlot = runtime.setSlot.bind(element)
-          ...['destroy', 'appendToSlot'].map((x: 'destroy' | 'appendToSlot') =>
-            t.expressionStatement(
-              t.assignmentExpression(
-                '=',
-                t.memberExpression(varName, t.identifier(x)),
-                t.callExpression(
-                  t.memberExpression(
-                    this.makeRuntimeMemberExpression(x),
-                    t.identifier('bind')
-                  ),
-                  [
-                    varName
-                  ]
-                )
-              )
+          //  element.subscriptions.push(...subscriptions)
+          t.expressionStatement(
+            t.callExpression(
+              t.memberExpression(
+                t.memberExpression(varName, t.identifier('subscriptions')),
+                t.identifier('push')),
+              [ t.spreadElement(this.subscriptionsVar) ]
             )
           )
         )
       }
+
+      // Here our element is initialized, we can execute the delayed initializers
+      this.stmts.push(
+        //  update()
+        //  ...
+        ...this.delayedInitializers.map(x =>
+            t.expressionStatement(t.callExpression(x, [])))
+      )
 
 
       // Find the first parent where we can insert our data

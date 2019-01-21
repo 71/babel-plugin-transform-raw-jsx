@@ -1,4 +1,4 @@
-import { Obs, Observable, ObservableLike, isObservable, observable, createMarker } from './index'
+import { Obs, Observable, ObservableLike, isObservable, observable, createInsertionPoint, value, destroy, NestedNode } from './index'
 
 
 type ArrayProxy<T, ThisType extends any[] = T[]> = {
@@ -12,10 +12,42 @@ class ReactiveItem<T> {
   constructor(
     public value: Obs<T>,
     public index: Observable<number>,
-    public elt  : HTMLElement
+    public elts : Node[],
+    public insertionPoint: Node
   ) {}
+
+  destroy() {
+    this.elts.forEach(destroy)
+    this.insertionPoint.parentElement.removeChild(this.insertionPoint)
+  }
 }
 
+function flatten(nestedNode: NestedNode) {
+  const arr: Node[] = [];
+
+  (function aux(nestedNode: NestedNode, arr: Node[]) {
+    if (nestedNode == null)
+      return
+
+    if (typeof nestedNode === 'function')
+      return aux((nestedNode as any)(), arr)
+
+    if (Array.isArray(nestedNode))
+      return nestedNode.forEach(el => aux(el, arr))
+
+    arr.push(nestedNode instanceof Node ? nestedNode : new Text(nestedNode as any))
+  })(nestedNode, arr);
+
+  return arr
+}
+
+
+export function insertChildren(
+  parent: HTMLElement,
+  list  : Observable<NestedNode[]>
+) {
+  map(parent, list, value as any)
+}
 
 /**
  * Given a parent element, a source list, and a way to render each element
@@ -23,30 +55,38 @@ class ReactiveItem<T> {
  * when needed, and wraps each list call into an efficient render-update method.
  */
 export function map<T>(
-  parent        : HTMLElement,
-  list          : ObservableLike<T[]>,
-  computeElement: (value: Obs<T>, index: Observable<number>) => HTMLElement
+  parent: HTMLElement,
+  list  : ObservableLike<T[]>,
+  computeElements: (value: Obs<T>, index: Observable<number>) => NestedNode
 ) {
+  let totalLength = 0
+
   const values: Obs<T>[] = []
   const reactiveItems: ReactiveItem<T>[] = []
 
   const vals = isObservable(list) ? list.value : list
+  const insertionPoint = createInsertionPoint()
 
   if (vals) {
     for (let i = 0; i < vals.length; i++) {
       const obs = observable(vals[i])
       const index = new Observable(i)
-      const element = computeElement(obs, index)
+      const elements = flatten(computeElements(obs, index))
+
+      const localInsertionPoint = createInsertionPoint()
+
+      parent.appendChild(localInsertionPoint)
 
       values.push(obs)
-      reactiveItems.push(new ReactiveItem(obs, index, element))
+      reactiveItems.push(new ReactiveItem(obs, index, elements, localInsertionPoint))
 
-      parent.appendChild(element)
+      elements.forEach(parent.appendChild.bind(parent))
+      totalLength += elements.length
     }
   }
 
-  const nextMarker = createMarker()
-  parent.append(nextMarker)
+  parent.append(insertionPoint)
+
 
   function splice(
     reactiveItems: ReactiveItem<T>[],
@@ -55,10 +95,27 @@ export function map<T>(
     deleteCount  : number,
     ...items     : Obs<T>[]
   ): Obs<T>[] {
+    // Find next sibling for insertion
+    let nextSibling = insertionPoint
+
+    for (let i = start; i < reactiveItems.length; i++) {
+      const elts = reactiveItems[i].elts
+
+      if (elts.length == 0)
+        continue
+
+      nextSibling = elts[0]
+      break
+    }
+
+    // Transform each item into a reactive element
     const reactiveToInsert: ReactiveItem<T>[] = []
-    const nextSibling = start >= items.length ? nextMarker : reactiveItems[start].elt
 
     for (let i = 0; i < items.length; i++) {
+      const insertionPoint = createInsertionPoint()
+
+      parent.insertBefore(insertionPoint, nextSibling)
+
       let item = items[i]
 
       if (!isObservable(item))
@@ -66,15 +123,18 @@ export function map<T>(
         item = items[i] = new Observable(item)
 
       const index = new Observable(start++)
-      const element = computeElement(item, index)
+      const elements = flatten(computeElements(item, index))
 
-      reactiveToInsert.push(new ReactiveItem(item, index, element))
+      reactiveToInsert.push(new ReactiveItem(item, index, elements, insertionPoint))
 
-      nextSibling.parentElement!!.insertBefore(element, nextSibling)
+      elements.forEach(x => nextSibling.parentElement.insertBefore(x, insertionPoint))
+      totalLength += elements.length
     }
 
-    for (const { elt } of reactiveItems.splice(start, deleteCount, ...reactiveToInsert))
-      elt.remove()
+    for (const reactiveItem of reactiveItems.splice(start, deleteCount, ...reactiveToInsert)) {
+      reactiveItem.destroy()
+      totalLength -= reactiveItem.elts.length
+    }
 
     return values.splice(start, deleteCount, ...items)
   }
@@ -88,7 +148,7 @@ export function map<T>(
       if (this.length == 0)
         return
 
-      this.pop()!!.elt.remove()
+      this.pop().destroy()
 
       return values.pop()
     },
@@ -96,7 +156,7 @@ export function map<T>(
       if (this.length == 0)
         return
 
-      this.shift()!!.elt.remove()
+      this.shift().destroy()
 
       return values.shift()
     },
@@ -114,17 +174,23 @@ export function map<T>(
 
     reverse(): Obs<T>[] {
       const len = this.length / 2
+      const nextNode = insertionPoint.nextSibling
 
       for (let i = 0; i < len; i++) {
         const a = this[i],
               b = this[this.length - 1 - i]
 
         // Swap elements
-        const afterB = b.elt.nextElementSibling
-        const parent = a.elt.parentElement!!
+        const afterA = a.insertionPoint
+        const afterB = b.insertionPoint
+        const parent = insertionPoint.parentElement
 
-        a.elt.replaceWith(b.elt)
-        parent.insertBefore(a.elt, afterB)
+        a.elts.forEach(x => parent.insertBefore(x, afterB))
+        b.elts.forEach(x => parent.insertBefore(x, afterA))
+
+        // Swap insertion points
+        a.insertionPoint = afterB
+        b.insertionPoint = afterA
 
         // Swap in source arrays
         this[i] = b
@@ -138,12 +204,8 @@ export function map<T>(
         b.index.value = i
       }
 
-      if (len > 0) {
-        const nextNode = this[this.length - 1].elt.nextSibling
-
-        if (nextNode != nextMarker)
-          parent.insertBefore(nextMarker, nextNode)
-      }
+      if (nextNode != insertionPoint)
+        parent.insertBefore(insertionPoint, nextNode)
 
       return values
     },
@@ -157,7 +219,7 @@ export function map<T>(
       // @ts-ignore
       this.sort(compareFn != null ? (a, b) => compareFn(a.value.value, b.value.value) : undefined)
 
-      const parent = this[0].elt.parentElement!!
+      const parent = insertionPoint.parentElement
 
       for (let i = 0; i < this.length; i++) {
         // Update reactive item
@@ -168,7 +230,8 @@ export function map<T>(
         // Push element to end of children
         // Since every element is pushed to end in order,
         // this will put them all in their place
-        parent.insertBefore(item.elt, nextMarker)
+        item.elts.forEach(x => parent.insertBefore(x, insertionPoint))
+        parent.insertBefore(item.insertionPoint, insertionPoint)
 
         // Update item
         values[i] = item.value
@@ -193,7 +256,7 @@ export function map<T>(
     },
 
     copyWithin(target: number, start: number, end?: number): Obs<T>[] {
-      throw new Error('Cannot copy withing a reactive list.')
+      throw new Error('Cannot copy within a reactive list.')
     }
   }
 
@@ -234,7 +297,7 @@ export function map<T>(
     list.subscribe(x => {
       // Maybe we could try doing a diff between the two lists and update
       // accordingly, but right now we don't.
-      proxy.splice(0, proxy.length, x as any)
+      proxy.splice(0, proxy.length, ...x as Obs<T>[])
     })
   }
 }

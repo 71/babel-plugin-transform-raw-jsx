@@ -88,18 +88,18 @@ export type ObservableLike<T> = T | Observable<T>
  */
 export type Component<P = {}, E extends Node = Element> = (props: P) => E
 
-type Slot = {
-  elements  : Node[]
-  nextMarker: Node
-  hasDefault: boolean
-}
-
+/**
+ * An arbitrarily nested `Node` list.
+ */
+export type NestedNode =
+  | Node
+  | ((parent: Element, inserted: Node[], insertionPoint: Node) => void)
+  | (() => Node)
+  | { [i: number]: NestedNode }
 
 /**
- * Creates an {HTMLElement}, given its parent, tag, and attributes.
+ * Creates an {HTMLElement}, given its tag and attributes.
  *
- * @param parent The parent of the node to create, to which the node
- *   will be appended. Can be `null`.
  * @param tag The HTML tag of the element to create.
  * @param attrs An optional object that contains attributes that
  *   will be set on the created element.
@@ -112,10 +112,8 @@ export function createElement<K extends keyof HTMLElementTagNameMap>(
 ): HTMLElementTagNameMap[K]
 
 /**
- * Creates an {HTMLElement}, given its parent, component, and attributes.
+ * Creates an {HTMLElement}, given its component, attributes and children.
  *
- * @param parent The parent of the node to create, to which the node
- *   will be appended. Can be `null`.
  * @param tag The component of the element to create.
  * @param attrs An optional object that contains attributes and properties that
  *   will be set on the created element.
@@ -125,36 +123,60 @@ export function createElement<K extends keyof HTMLElementTagNameMap>(
 export function createElement<K extends (props: object) => Element>(
   component: K,
   attrs    : K extends (props: infer A) => infer E ? A & Partial<E> : never,
+  ...children: Node[]
 ): ReturnType<K>
 
 export function createElement(
-  tag   : string | ((props: object) => Element),
-  attrs : object
+  tag  : string | ((props: object) => Element),
+  attrs: object,
+  ...children: NestedNode[]
 ): Element {
   attrs = attrs || {}
 
-  const isElement = typeof tag == 'string'
-  const el = isElement
-    ? document.createElement(tag as any)
-    : (tag as any)(attrs)
+  const isIntrinsic = typeof tag == 'string'
+  const el = isIntrinsic
+    ? document.createElement(tag as keyof HTMLElementTagNameMap)
+    : (tag as (props: {}) => HTMLElement)(attrs)
 
-  for (let attr in attrs) {
-    let value = attrs[attr]
+  if (isIntrinsic) {
+    // This is an intrinsic element, so we just copy
+    // the attributes.
+    for (let attr in attrs) {
+      let value = attrs[attr]
 
-    if (value == null)
-      continue
+      if (value == null)
+        continue
 
-    let isObs = isObservable(value)
+      const setValue = (value) => {
+        if (attr == 'class')
+          el.classList.add(...value.split(' '))
+        else if (attr == 'style')
+          Object.assign(el.style, value)
+        else
+          el[attr] = value
+      }
 
-    if (!isElement) {
-      value = attrs[attr] = new Observable(value)
-      isObs = true
+      if (attr == 'class')
+        attr = 'className'
+
+      let isObs = isObservable(value)
+
+      setValue(isObs ? value.value : value)
+
+      if (isObs)
+        value.subscribe(x => setValue(x.value))
+    }
+  } else {
+    // This is a component, so we only pass it the attributes
+    for (let attr in attrs) {
+      let value = attrs[attr]
+
+      if (!isObservable(value))
+        attrs[attr] = new Observable(value)
     }
 
-    el[attr] = isObs ? value.value : value
-
-    if (isObs)
-      value.subscribe(() => el[attr] = value.value)
+    if (children && children.length > 0)
+      attrs['children'] = children
   }
 
   return el
@@ -166,65 +188,49 @@ export function createElement(
  *
  * Not intended for direct use.
  */
-export function addElement(parent: HTMLElement, elt: any, inserted: Node[], nextMarker: Node, noSlotCheck?: boolean) {
-  if (noSlotCheck !== true && typeof parent['appendToSlot'] == 'function')
-    return (parent as JSX.Element).appendToSlot('default', elt)
-
+export function addElement(elt: NestedNode, insertionPoint: Node, inserted: Node[]) {
   if (!elt)
     return
 
-  if (Array.isArray(elt)) {
-    for (let i = 0; i < elt.length; i++)
-      addElement(parent, elt[i], inserted, nextMarker)
-    return
-  }
+  if (typeof elt === 'function')
+    return elt.length > 0
+      // Element is a function, and we require that it has the signature
+      // (insertionPoint: Node, inserted: Node[]) => any
+      ? (elt as any)(insertionPoint, inserted)
 
-  if (!(elt instanceof Node))
-    elt = new Text(elt)
+      // Element is a function but does not take arguments, therefore
+      // it cannot insert anything into the DOM via 'parent', and
+      // we can assume it returns a DOM element.
+      : addElement((elt as any)(), insertionPoint, inserted)
+
+  if (Array.isArray(elt))
+    return elt.forEach(el => addElement(el, insertionPoint, inserted))
+
+  elt = elt instanceof Node ? elt : new Text(elt as any)
 
   if (inserted == null)
-    return parent.appendChild(elt)
+    // No 'inserted' array, so the signature is '(elt, parent) => void'
+    // Therefore we insert under 'insertionPoint' aka 'parent'
+    return insertionPoint.appendChild(elt)
+
+  const parent = insertionPoint.parentElement
+
+  if (parent == null)
+    // No parent, so we're pre-initializing
+    return inserted.push(elt)
 
   inserted.push(elt)
-  parent.insertBefore(elt, nextMarker)
+  parent.insertBefore(elt, insertionPoint)
 }
 
 /**
- * Creates a marker node, which is an invisible node before which other elements can be inserted.
+ * Creates an insertion point,
+ * which is an invisible DOM node before which other elements can be inserted.
  *
  * Not intended for direct use.
  */
-export function createMarker(): Node {
+export function createInsertionPoint(): Node {
   return document.createTextNode('')
-}
-
-/**
- * Defines a new slot for an element.
- *
- * Not intended for direct use.
- */
-export function defineSlot(ownerElement: JSX.Element, parentElement: JSX.Element, slotName: string, def?: any[]) {
-  if (def != null) {
-    for (let i = 0; i < def.length; i++) {
-      if (!(def[i] instanceof Node))
-        def[i] = new Text(def[i])
-
-      parentElement.appendChild(def[i])
-    }
-  }
-
-  const marker = parentElement.appendChild(createMarker())
-  const slot: Slot = {
-    hasDefault: def != null,
-    elements  : def || [],
-    nextMarker: marker
-  }
-
-  if (ownerElement.slots == null)
-    // @ts-ignore
-    ownerElement.slots = { [slotName]: slot }
-  else
-    ownerElement.slots[slotName] = slot
 }
 
 /**
@@ -233,38 +239,23 @@ export function defineSlot(ownerElement: JSX.Element, parentElement: JSX.Element
  * Not intended for direct use.
  */
 export function destroy(this: JSX.Element) {
-  let node = this || arguments[0]
+  let node: JSX.Element = this || arguments[0]
 
   node.remove()
 
   if (node.subscriptions == null)
     return
 
-  node.subscriptions.splice(0).forEach(sub => sub.unsubscribe)
+  node.subscriptions.splice(0).forEach(sub => {
+    if ('unsubscribe' in sub)
+      sub.unsubscribe()
+    else if ('destroy' in sub)
+      // @ts-ignore
+      sub.destroy()
+  })
 
   if (node.ondestroy != null)
     node.ondestroy()
-}
-
-/**
- * Appends the given element or group of elements to the
- * given slot.
- *
- * Not intended for direct use.
- */
-export function appendToSlot(this: JSX.Element, slot: string, elt: any) {
-  if (this.slots == null || !(slot in this.slots))
-    throw new Error(`Unknown slot '${slot}' given.`)
-
-  const { elements, nextMarker, hasDefault } = this.slots[slot]
-
-  if (hasDefault) {
-    const parent = nextMarker.parentElement
-    elements.splice(0).forEach(parent.removeChild.bind(parent))
-    Object.assign(this.slots[slot], { hasDefault: false, elements })
-  }
-
-  addElement(nextMarker.parentElement, elt, elements, nextMarker, true)
 }
 
 
@@ -345,27 +336,34 @@ export function merge(...observables: Rx.Subscribable<any>[]): Rx.Subscribable<a
   }
 }
 
+export { insertChildren } from './map'
+
 
 // Define various elements to help TypeScript resolve types.
 declare global {
   // See https://www.typescriptlang.org/docs/handbook/jsx.html
   namespace JSX {
     type Element = HTMLElement & {
-      ondestroy?: () => void
-
-      destroy(): void
-      appendToSlot(slot: string, child: any): void
-
-      readonly slots?: Record<string, Slot>
       readonly subscriptions?: Rx.Unsubscribable[]
+
+      ondestroy?: () => void
+      destroy(): void
+    }
+
+    type AdditionalIntrinsicElementAttributes<K extends keyof HTMLElementTagNameMap> = {
+      style?: string | Partial<CSSStyleDeclaration>
+      class?: string
+      slot ?: string
+      ref  ?: HTMLElementTagNameMap[K]
     }
 
     type IntrinsicElements = {
-      [key in keyof HTMLElementTagNameMap]: Partial<HTMLElementTagNameMap[key]> & {
-        class?: string
-        slot ?: string
-        ref  ?: HTMLElementTagNameMap[key]
-      }
+      // Known elements
+      [key in keyof HTMLElementTagNameMap]: Partial<HTMLElementTagNameMap[key]> &
+                                            AdditionalIntrinsicElementAttributes<key>
+    } & {
+      // Unknown elements
+      [key: string]: Partial<HTMLElement> & AdditionalIntrinsicElementAttributes<'aside'>
     }
   }
 }
