@@ -166,8 +166,8 @@ export function createElement(
  *
  * Not intended for direct use.
  */
-export function addElement(parent: HTMLElement, elt: any, inserted: Node[], nextMarker: Node) {
-  if (typeof parent['appendToSlot'] == 'function')
+export function addElement(parent: HTMLElement, elt: any, inserted: Node[], nextMarker: Node, noSlotCheck?: boolean) {
+  if (noSlotCheck !== true && typeof parent['appendToSlot'] == 'function')
     return (parent as JSX.Element).appendToSlot('default', elt)
 
   if (!elt)
@@ -264,7 +264,7 @@ export function appendToSlot(this: JSX.Element, slot: string, elt: any) {
     Object.assign(this.slots[slot], { hasDefault: false, elements })
   }
 
-  addElement(nextMarker.parentElement, elt, elements, nextMarker)
+  addElement(nextMarker.parentElement, elt, elements, nextMarker, true)
 }
 
 
